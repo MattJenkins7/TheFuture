@@ -1,0 +1,49 @@
+// Ex12 – TMP36 Temperature Sensor Test
+
+#include <Arduino.h>
+
+// Pin
+const int sensorPin = 9; // TMP36 VOUT (GPIO34/ADC1_CH6)
+
+// ADC configuration
+const float referenceVoltage = 3.3;
+#define ADC_MAX 4095.0
+
+void setup()
+{
+  Serial.begin(115200);
+  delay(500);
+
+  Serial.println("\n=== TMP36 Temperature Sensor Test ===");
+
+  // ADC configuration for 12-bit resolution
+  analogReadResolution(12);
+  analogSetPinAttenuation(sensorPin, ADC_11db);
+
+  Serial.println("Reading TMP36 sensor (update every 1 second)...\n");
+}
+
+void loop()
+{
+  // Read TMP36 ADC
+  int adcValue = analogRead(sensorPin);
+
+  // Convert ADC reading to voltage
+  float voltage = adcValue * referenceVoltage / ADC_MAX;
+
+  // TMP36 formula: Temperature(°C) = (Voltage - 0.5V) * 100
+  // At 25°C: output is 0.75V
+  // Sensitivity: 10mV per °C
+  float temperatureC = (voltage - 0.5) * 100.0;
+
+  // Print results
+  Serial.print("ADC: ");
+  Serial.print(adcValue);
+  Serial.print("  Voltage: ");
+  Serial.print(voltage, 3);
+  Serial.print("V  Temperature: ");
+  Serial.print(temperatureC, 2);
+  Serial.println("°C");
+
+  delay(1000);
+}
