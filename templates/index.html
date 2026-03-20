@@ -104,21 +104,12 @@
     <main class="wrap">
       <section class="header">
         <h1>ESP32 Live Dashboard</h1>
-        <div class="sub">Live readings via AJAX (no page refresh)</div>
       </section>
 
       <section class="grid">
         <article class="card">
           <div class="label">Temperature</div>
           <div class="value" id="temperature">--</div>
-        </article>
-        <article class="card">
-          <div class="label">Humidity</div>
-          <div class="value" id="humidity">--</div>
-        </article>
-        <article class="card">
-          <div class="label">Light</div>
-          <div class="value" id="light">--</div>
         </article>
         <article class="card">
           <div class="label">Current LED Pattern</div>
@@ -140,8 +131,6 @@
 
     <script>
       const temperatureEl = document.getElementById("temperature");
-      const humidityEl = document.getElementById("humidity");
-      const lightEl = document.getElementById("light");
       const patternEl = document.getElementById("pattern");
       const statusEl = document.getElementById("status");
 
@@ -155,8 +144,6 @@
           const data = await res.json();
 
           temperatureEl.textContent = fmt(data.temperature, " C");
-          humidityEl.textContent = fmt(data.humidity, " %");
-          lightEl.textContent = fmt(data.light);
           patternEl.textContent = data.pattern || "OFF";
         } catch (err) {
           statusEl.textContent = "Failed to fetch live data";
