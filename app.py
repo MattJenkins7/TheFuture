@@ -33,8 +33,6 @@ def post_sensor_data():
     with state_lock:
         if "temperature" in payload:
             latest_state["temperature"] = payload["temperature"]
-        if "humidity" in payload:
-            latest_state["humidity"] = payload["humidity"]
         if "light" in payload:
             latest_state["light"] = payload["light"]
         if "pattern" in payload:
