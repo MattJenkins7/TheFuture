@@ -1,3 +1,10 @@
+"Your real friends are easy to identify. 
+ They don't ask for your wi-fi, they already have it,
+ because trust isn't saying "Hey, what's the password?",
+ trust is, your phone connecting automatically, and, if
+ they still ask for your password, that's not a friend,
+ that's a guest. *Laugh track*" - Miami Tony Stark
+
 # ESP32 + Flask Live Dashboard
 
 This setup gives you:
