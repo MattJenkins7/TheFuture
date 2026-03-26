@@ -1,0 +1,305 @@
+// Ex12 – TMP36 Temperature Sensor Test (5 LEDs)
+
+#include <Arduino.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+
+// Wi-Fi credentials
+const char *WIFI_SSID = "AndroidAP33D3";
+const char *WIFI_PASS = "password";
+
+// Flask server endpoint (use your PC's LAN IP, not 127.0.0.1)
+const char *SERVER_URL = "http://10.121.184.156:5000/api/sensor-data";
+const char *STATUS_URL = "http://10.121.184.156:5000/api/status";
+
+// LED pins (GPIO placeholders)
+const int LED_1 = 6;
+const int LED_2 = 9;
+const int LED_3 = 10;
+const int LED_4 = 11;
+const int LED_5 = 12;
+
+const int LED_PINS[5] = {LED_1, LED_2, LED_3, LED_4, LED_5};
+
+enum PatternMode
+{
+    PATTERN_OFF,
+    PATTERN_BLINK,
+    PATTERN_CHASE,
+    PATTERN_ALTERNATE,
+    PATTERN_FLICKER
+};
+
+PatternMode currentPatternMode = PATTERN_OFF;
+String currentPattern = "OFF";
+unsigned long lastPatternPollMs = 0;
+const unsigned long patternPollIntervalMs = 1000;
+unsigned long lastPatternStepMs = 0;
+int chaseStep = 0;
+bool blinkOn = false;
+int alternateIndex = 0;
+
+// Pin
+const int sensorPin = 5; // TMP36 VOUT (GPIO34/ADC1_CH6)
+
+// ADC configuration
+const float referenceVoltage = 3.3;
+#define ADC_MAX 4095.0
+
+void setup()
+{
+    Serial.begin(115200);
+    delay(500);
+
+    Serial.println("\n=== TMP36 Temperature Sensor Test ===");
+
+    // ADC configuration for 12-bit resolution
+    analogReadResolution(12);
+    analogSetPinAttenuation(sensorPin, ADC_11db);
+
+    for (int i = 0; i < 5; i++)
+    {
+        pinMode(LED_PINS[i], OUTPUT);
+        digitalWrite(LED_PINS[i], LOW);
+    }
+
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    Serial.print("Connecting to WiFi");
+    while (WiFi.status() != WL_CONNECTED)
+    {
+        delay(300);
+        Serial.print(".");
+    }
+    Serial.println();
+    Serial.print("WiFi connected. IP: ");
+    Serial.println(WiFi.localIP());
+
+    randomSeed(analogRead(sensorPin));
+
+    Serial.println("Reading TMP36 sensor (update every 1 second)...\n");
+}
+
+static void setLeds(bool led1On, bool led2On, bool led3On, bool led4On, bool led5On)
+{
+    digitalWrite(LED_PINS[0], led1On ? HIGH : LOW);
+    digitalWrite(LED_PINS[1], led2On ? HIGH : LOW);
+    digitalWrite(LED_PINS[2], led3On ? HIGH : LOW);
+    digitalWrite(LED_PINS[3], led4On ? HIGH : LOW);
+    digitalWrite(LED_PINS[4], led5On ? HIGH : LOW);
+}
+
+static PatternMode parsePattern(const String &pattern)
+{
+    if (pattern == "BLINK")
+    {
+        return PATTERN_BLINK;
+    }
+    if (pattern == "WAVE")
+    {
+        return PATTERN_CHASE;
+    }
+    if (pattern == "RAINBOW")
+    {
+        return PATTERN_ALTERNATE;
+    }
+    if (pattern == "FLICKER")
+    {
+        return PATTERN_FLICKER;
+    }
+    return PATTERN_OFF;
+}
+
+static void applyPattern(const String &pattern)
+{
+    currentPattern = pattern;
+    currentPatternMode = parsePattern(pattern);
+    lastPatternStepMs = 0;
+    chaseStep = 0;
+    blinkOn = false;
+    alternateIndex = 0;
+    setLeds(false, false, false, false, false);
+}
+
+static void pollPattern()
+{
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        return;
+    }
+
+    HTTPClient http;
+    http.begin(STATUS_URL);
+    int code = http.GET();
+    if (code == 200)
+    {
+        String body = http.getString();
+        StaticJsonDocument<256> doc;
+        DeserializationError err = deserializeJson(doc, body);
+        if (!err)
+        {
+            const char *pattern = doc["pattern"] | "OFF";
+            if (currentPattern != pattern)
+            {
+                currentPattern = pattern;
+                applyPattern(currentPattern);
+            }
+        }
+    }
+    http.end();
+}
+
+static void updatePattern(unsigned long now)
+{
+    if (currentPatternMode == PATTERN_OFF)
+    {
+        return;
+    }
+
+    if (currentPatternMode == PATTERN_BLINK)
+    {
+        if (now - lastPatternStepMs >= 500)
+        {
+            lastPatternStepMs = now;
+            blinkOn = !blinkOn;
+            setLeds(blinkOn, blinkOn, blinkOn, blinkOn, blinkOn);
+        }
+        return;
+    }
+
+    if (currentPatternMode == PATTERN_CHASE)
+    {
+        if (now - lastPatternStepMs >= 350)
+        {
+            lastPatternStepMs = now;
+            if (chaseStep == 0)
+            {
+                setLeds(true, false, false, false, false);
+            }
+            else if (chaseStep == 1)
+            {
+                setLeds(false, true, false, false, false);
+            }
+            else if (chaseStep == 2)
+            {
+                setLeds(false, false, true, false, false);
+            }
+            else if (chaseStep == 3)
+            {
+                setLeds(false, false, false, true, false);
+            }
+            else
+            {
+                setLeds(false, false, false, false, true);
+            }
+            chaseStep = (chaseStep + 1) % 5;
+        }
+        return;
+    }
+
+    if (currentPatternMode == PATTERN_ALTERNATE)
+    {
+        if (now - lastPatternStepMs >= 400)
+        {
+            lastPatternStepMs = now;
+            if (alternateIndex == 0)
+            {
+                setLeds(true, false, false, false, false);
+            }
+            else if (alternateIndex == 1)
+            {
+                setLeds(false, true, false, false, false);
+            }
+            else if (alternateIndex == 2)
+            {
+                setLeds(false, false, true, false, false);
+            }
+            else if (alternateIndex == 3)
+            {
+                setLeds(false, false, false, true, false);
+            }
+            else
+            {
+                setLeds(false, false, false, false, true);
+            }
+            alternateIndex = (alternateIndex + 1) % 5;
+        }
+        return;
+    }
+
+    if (currentPatternMode == PATTERN_FLICKER)
+    {
+        if (now - lastPatternStepMs >= 120)
+        {
+            lastPatternStepMs = now;
+            setLeds(
+                random(0, 2),
+                random(0, 2),
+                random(0, 2),
+                random(0, 2),
+                random(0, 2));
+        }
+    }
+}
+
+void loop()
+{
+    // Read TMP36 ADC
+    int adcValue = analogRead(sensorPin);
+
+    // Convert ADC reading to voltage
+    float voltage = adcValue * referenceVoltage / ADC_MAX;
+
+    // TMP36 formula: Temperature(°C) = (Voltage - 0.5V) * 100
+    // At 25°C: output is 0.75V
+    // Sensitivity: 10mV per °C
+    float temperatureC = (voltage - 0.5) * 100.0;
+
+    // Print results
+    Serial.print("ADC: ");
+    Serial.print(adcValue);
+    Serial.print("  Voltage: ");
+    Serial.print(voltage, 3);
+    Serial.print("V  Temperature: ");
+    Serial.print(temperatureC, 2);
+    Serial.println("C");
+
+    // Post JSON to Flask server
+    if (WiFi.status() == WL_CONNECTED)
+    {
+        HTTPClient http;
+        http.begin(SERVER_URL);
+        http.addHeader("Content-Type", "application/json");
+
+        String payload = "{";
+        payload += "\"temperature\":" + String(temperatureC, 2);
+        payload += "}";
+
+        int code = http.POST(payload);
+        Serial.print("POST code: ");
+        Serial.println(code);
+        if (code > 0)
+        {
+            String resp = http.getString();
+            Serial.println(resp);
+        }
+        http.end();
+    }
+    else
+    {
+        Serial.println("WiFi disconnected. Reconnecting...");
+        WiFi.reconnect();
+    }
+
+    unsigned long now = millis();
+    if (now - lastPatternPollMs >= patternPollIntervalMs)
+    {
+        lastPatternPollMs = now;
+        pollPattern();
+    }
+
+    updatePattern(now);
+
+    delay(1000);
+}
