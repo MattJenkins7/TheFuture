@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ESP32 Sensor Dashboard</title>
     <style>
       :root {
@@ -15,13 +15,20 @@
         --ok: #0f9d58;
       }
 
-      * { box-sizing: border-box; }
+      * {
+        box-sizing: border-box;
+      }
 
       body {
         margin: 0;
         font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
         color: var(--text);
-        background: radial-gradient(circle at 10% 20%, #e8f2ff 0%, var(--bg) 45%, #eef8ff 100%);
+        background: radial-gradient(
+          circle at 10% 20%,
+          #e8f2ff 0%,
+          var(--bg) 45%,
+          #eef8ff 100%
+        );
         min-height: 100vh;
       }
 
@@ -98,6 +105,50 @@
         color: var(--ok);
         min-height: 1.2em;
       }
+
+      .speed-control {
+        margin-top: 22px;
+      }
+
+      .speed-display {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+
+      .speed-value {
+        font-size: 1.6rem;
+        font-weight: 700;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        height: 8px;
+        border-radius: 5px;
+        background: #e0e0e0;
+        outline: none;
+        -webkit-appearance: none;
+      }
+
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--accent);
+        cursor: pointer;
+      }
+
+      input[type="range"]::-moz-range-thumb {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: var(--accent);
+        cursor: pointer;
+        border: none;
+      }
     </style>
   </head>
   <body>
@@ -128,12 +179,33 @@
         </div>
         <div class="status" id="status"></div>
       </section>
+
+      <section class="card speed-control">
+        <div class="label">LED Speed</div>
+        <div class="speed-display">
+          <input
+            type="range"
+            id="speedSlider"
+            min="100"
+            max="3000"
+            value="300"
+            step="50"
+          />
+        </div>
+        <div style="text-align: center; margin-top: 8px">
+          <span class="speed-value" id="speedValue">300</span> ms
+        </div>
+        <div class="status" id="speedStatus"></div>
+      </section>
     </main>
 
     <script>
       const temperatureEl = document.getElementById("temperature");
       const patternEl = document.getElementById("pattern");
       const statusEl = document.getElementById("status");
+      const speedSlider = document.getElementById("speedSlider");
+      const speedValue = document.getElementById("speedValue");
+      const speedStatus = document.getElementById("speedStatus");
 
       function fmt(value, unit = "") {
         return value === null || value === undefined ? "--" : `${value}${unit}`;
@@ -146,6 +218,10 @@
 
           temperatureEl.textContent = fmt(data.temperature, " C");
           patternEl.textContent = data.pattern || "OFF";
+          if (data.speed) {
+            speedSlider.value = data.speed;
+            speedValue.textContent = data.speed;
+          }
         } catch (err) {
           statusEl.textContent = "Failed to fetch live data";
         }
@@ -156,7 +232,7 @@
           const res = await fetch("/api/pattern", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ pattern })
+            body: JSON.stringify({ pattern }),
           });
 
           const data = await res.json();
@@ -172,8 +248,37 @@
         }
       }
 
+      async function setSpeed(speed) {
+        try {
+          const res = await fetch("/api/speed", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ speed: parseInt(speed) }),
+          });
+
+          const data = await res.json();
+          if (!data.ok) {
+            speedStatus.textContent = data.error || "Speed update failed";
+            return;
+          }
+
+          speedStatus.textContent = `Speed set to ${data.speed} ms`;
+          speedValue.textContent = data.speed;
+        } catch (err) {
+          speedStatus.textContent = "Speed update failed";
+        }
+      }
+
       document.querySelectorAll("button[data-pattern]").forEach((btn) => {
         btn.addEventListener("click", () => setPattern(btn.dataset.pattern));
+      });
+
+      speedSlider.addEventListener("input", (e) => {
+        speedValue.textContent = e.target.value;
+      });
+
+      speedSlider.addEventListener("change", (e) => {
+        setSpeed(e.target.value);
       });
 
       refreshStatus();

@@ -34,11 +34,12 @@ enum PatternMode
 PatternMode currentPatternMode = PATTERN_OFF;
 String currentPattern = "OFF";
 unsigned long lastPatternPollMs = 0;
-const unsigned long patternPollIntervalMs = 1000;
+const unsigned long patternPollIntervalMs = 200; // Poll more frequently for responsive slider
 unsigned long lastPatternStepMs = 0;
 int chaseStep = 0;
 bool blinkOn = false;
 int alternateIndex = 0;
+unsigned long currentSpeed = 300; // Speed in milliseconds (100-3000)
 
 // Pin
 const int sensorPin = 5; // TMP36 VOUT (GPIO34/ADC1_CH6)
@@ -145,6 +146,16 @@ static void pollPattern()
                 currentPattern = pattern;
                 applyPattern(currentPattern);
             }
+
+            // Read speed from server (100-3000 ms)
+            unsigned long speed = doc["speed"] | 300;
+            if (speed >= 100 && speed <= 3000)
+            {
+                currentSpeed = speed;
+                Serial.print("Speed updated to: ");
+                Serial.print(currentSpeed);
+                Serial.println(" ms");
+            }
         }
     }
     http.end();
@@ -159,7 +170,7 @@ static void updatePattern(unsigned long now)
 
     if (currentPatternMode == PATTERN_BLINK)
     {
-        if (now - lastPatternStepMs >= 500)
+        if (now - lastPatternStepMs >= currentSpeed)
         {
             lastPatternStepMs = now;
             blinkOn = !blinkOn;
@@ -170,7 +181,7 @@ static void updatePattern(unsigned long now)
 
     if (currentPatternMode == PATTERN_CHASE)
     {
-        if (now - lastPatternStepMs >= 350)
+        if (now - lastPatternStepMs >= currentSpeed)
         {
             lastPatternStepMs = now;
             if (chaseStep == 0)
@@ -200,37 +211,40 @@ static void updatePattern(unsigned long now)
 
     if (currentPatternMode == PATTERN_ALTERNATE)
     {
-        if (now - lastPatternStepMs >= 400)
+        if (now - lastPatternStepMs >= currentSpeed)
         {
             lastPatternStepMs = now;
-            if (alternateIndex == 0)
+            // Ramp up: turn on lights one by one
+            // Ramp down: turn off lights one by one
+            if (alternateIndex < 5)
             {
-                setLeds(true, false, false, false, false);
-            }
-            else if (alternateIndex == 1)
-            {
-                setLeds(false, true, false, false, false);
-            }
-            else if (alternateIndex == 2)
-            {
-                setLeds(false, false, true, false, false);
-            }
-            else if (alternateIndex == 3)
-            {
-                setLeds(false, false, false, true, false);
+                // Ramp up phase (0-4)
+                setLeds(
+                    alternateIndex >= 0,
+                    alternateIndex >= 1,
+                    alternateIndex >= 2,
+                    alternateIndex >= 3,
+                    alternateIndex >= 4);
             }
             else
             {
-                setLeds(false, false, false, false, true);
+                // Ramp down phase (5-9)
+                int downIndex = 9 - alternateIndex;
+                setLeds(
+                    downIndex >= 0,
+                    downIndex >= 1,
+                    downIndex >= 2,
+                    downIndex >= 3,
+                    downIndex >= 4);
             }
-            alternateIndex = (alternateIndex + 1) % 5;
+            alternateIndex = (alternateIndex + 1) % 10;
         }
         return;
     }
 
     if (currentPatternMode == PATTERN_FLICKER)
     {
-        if (now - lastPatternStepMs >= 120)
+        if (now - lastPatternStepMs >= currentSpeed / 2)
         {
             lastPatternStepMs = now;
             setLeds(
@@ -301,5 +315,5 @@ void loop()
 
     updatePattern(now);
 
-    delay(1000);
+    delay(500);
 }

@@ -14,6 +14,7 @@ latest_state = {
     "humidity": None,
     "light": None,
     "pattern": "OFF",
+    "speed": 300,
     "updated_at": None,
 }
 
@@ -67,6 +68,24 @@ def set_pattern():
         latest_state["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     return jsonify({"ok": True, "pattern": latest_state["pattern"]})
+
+
+@app.post("/api/speed")
+def set_speed():
+    payload = request.get_json(silent=True) or {}
+    speed = payload.get("speed")
+
+    if speed is None or not isinstance(speed, int) or speed < 100 or speed > 3000:
+        return jsonify({
+            "ok": False,
+            "error": "Speed must be an integer between 100 and 3000 ms"
+        }), 400
+
+    with state_lock:
+        latest_state["speed"] = speed
+        latest_state["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    return jsonify({"ok": True, "speed": latest_state["speed"]})
 
 
 if __name__ == "__main__":
