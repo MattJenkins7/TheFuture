@@ -8,8 +8,8 @@ const char *WIFI_SSID = "AndroidAP33D3";
 const char *WIFI_PASS = "password";
 
 // Flask server
-const char *SERVER_URL = "http://10.121.184.156:5000/api/sensor-data";
-const char *STATUS_URL = "http://10.121.184.156:5000/api/status";
+const char *SERVER_URL = "http://10.82.46.156:5000/api/sensor-data";
+const char *STATUS_URL = "http://10.82.46.156:5000/api/status";
 
 // LED pins
 const int LED_1 = 6;
@@ -26,7 +26,8 @@ enum PatternMode
     PATTERN_BLINK,
     PATTERN_CHASE,
     PATTERN_ALTERNATE,
-    PATTERN_FLICKER
+    PATTERN_FLICKER,
+    PATTERN_TEMPERATURE_RESPONSIVE
 };
 
 PatternMode currentPatternMode = PATTERN_OFF;
@@ -37,7 +38,7 @@ unsigned long lastPatternStepMs = 0;
 int chaseStep = 0;
 bool blinkOn = false;
 int alternateIndex = 0;
-unsigned long currentSpeed = 300; // Speed in milliseconds (100-3000)
+unsigned long currentSpeed = 500;
 
 // Pin
 const int sensorPin = 5; // TMP36 VOUT (GPIO34/ADC1_CH6)
@@ -45,6 +46,9 @@ const int sensorPin = 5; // TMP36 VOUT (GPIO34/ADC1_CH6)
 // ADC configuration
 const float referenceVoltage = 3.3;
 #define ADC_MAX 4095.0
+
+// Latest temperature reading for temperature-responsive mode
+float latestTemperature = 0.0;
 
 void setup()
 {
@@ -106,6 +110,10 @@ static PatternMode parsePattern(const String &pattern)
     if (pattern == "FLICKER")
     {
         return PATTERN_FLICKER;
+    }
+    if (pattern == "TEMPERATURE_RESPONSIVE")
+    {
+        return PATTERN_TEMPERATURE_RESPONSIVE;
     }
     return PATTERN_OFF;
 }
@@ -253,6 +261,48 @@ static void updatePattern(unsigned long now)
                 random(0, 2));
         }
     }
+
+    if (currentPatternMode == PATTERN_TEMPERATURE_RESPONSIVE)
+    {
+        // Map temperature to LED count and patterns
+        // < 15°C: 5 LEDs (cold) - blue indication
+        // 15-20°C: 4 LEDs
+        // 20-25°C: 3 LEDs
+        // 25-30°C: 2 LEDs
+        // 30-35°C: 1 LED
+        // > 35°C: Flash red (hot) - blink pattern
+
+        if (latestTemperature < 15.0)
+        {
+            setLeds(true, true, true, true, true);
+        }
+        else if (latestTemperature < 20.0)
+        {
+            setLeds(true, true, true, true, false);
+        }
+        else if (latestTemperature < 25.0)
+        {
+            setLeds(true, true, true, false, false);
+        }
+        else if (latestTemperature < 30.0)
+        {
+            setLeds(true, true, false, false, false);
+        }
+        else if (latestTemperature < 35.0)
+        {
+            setLeds(true, false, false, false, false);
+        }
+        else
+        {
+            // Temperature is hot (> 35°C), flash all LEDs fast
+            if (now - lastPatternStepMs >= 200)
+            {
+                lastPatternStepMs = now;
+                blinkOn = !blinkOn;
+                setLeds(blinkOn, blinkOn, blinkOn, blinkOn, blinkOn);
+            }
+        }
+    }
 }
 
 void loop()
@@ -268,6 +318,9 @@ void loop()
     // Sensitivity: 10mV per °C
     float temperatureC = (voltage - 0.5) * 100.0;
 
+    // Store latest temperature for temperature-responsive mode
+    latestTemperature = temperatureC;
+
     // Print results
     Serial.print("ADC: ");
     Serial.print(adcValue);
@@ -280,13 +333,18 @@ void loop()
     // Post JSON to Flask server
     if (WiFi.status() == WL_CONNECTED)
     {
+        Serial.println("WiFi connected. Attempting POST...");
         HTTPClient http;
+        http.setTimeout(5000); // 5 second timeout
         http.begin(SERVER_URL);
         http.addHeader("Content-Type", "application/json");
 
         String payload = "{";
         payload += "\"temperature\":" + String(temperatureC, 2);
         payload += "}";
+
+        Serial.print("POST payload: ");
+        Serial.println(payload);
 
         int code = http.POST(payload);
         Serial.print("POST code: ");
@@ -295,6 +353,11 @@ void loop()
         {
             String resp = http.getString();
             Serial.println(resp);
+        }
+        else
+        {
+            Serial.print("POST failed with error: ");
+            Serial.println(http.errorToString(code));
         }
         http.end();
     }

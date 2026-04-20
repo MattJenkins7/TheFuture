@@ -149,6 +149,20 @@
         cursor: pointer;
         border: none;
       }
+
+      .chart-container {
+        position: relative;
+        height: 300px;
+        margin-top: 16px;
+      }
+
+      .temp-responsive-section {
+        margin-top: 22px;
+      }
+
+      button.active {
+        background: var(--ok);
+      }
     </style>
   </head>
   <body>
@@ -186,19 +200,37 @@
           <input
             type="range"
             id="speedSlider"
-            min="100"
+            min="500"
             max="3000"
-            value="300"
+            value="500"
             step="50"
           />
         </div>
         <div style="text-align: center; margin-top: 8px">
-          <span class="speed-value" id="speedValue">300</span> ms
+          <span class="speed-value" id="speedValue">500</span> ms
         </div>
         <div class="status" id="speedStatus"></div>
       </section>
+
+      <section class="card temp-responsive-section">
+        <div class="label">Temperature Responsive Mode</div>
+        <div class="buttons">
+          <button id="tempResponsiveBtn" data-pattern="TEMPERATURE_RESPONSIVE">
+            Enable Temp Mode
+          </button>
+        </div>
+        <div class="status" id="tempStatus"></div>
+      </section>
+
+      <section class="card">
+        <div class="label">Temperature Over Time</div>
+        <div class="chart-container">
+          <canvas id="temperatureChart"></canvas>
+        </div>
+      </section>
     </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
     <script>
       const temperatureEl = document.getElementById("temperature");
       const patternEl = document.getElementById("pattern");
@@ -206,9 +238,75 @@
       const speedSlider = document.getElementById("speedSlider");
       const speedValue = document.getElementById("speedValue");
       const speedStatus = document.getElementById("speedStatus");
+      const tempStatus = document.getElementById("tempStatus");
+      const tempResponsiveBtn = document.getElementById("tempResponsiveBtn");
+
+      let temperatureChart = null;
 
       function fmt(value, unit = "") {
         return value === null || value === undefined ? "--" : `${value}${unit}`;
+      }
+
+      function initChart() {
+        const ctx = document
+          .getElementById("temperatureChart")
+          .getContext("2d");
+        temperatureChart = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: [],
+            datasets: [
+              {
+                label: "Temperature (°C)",
+                data: [],
+                borderColor: "#ff4444",
+                backgroundColor: "rgba(255, 68, 68, 0.1)",
+                borderWidth: 2,
+                fill: true,
+                tension: 0.4,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                display: true,
+                position: "top",
+              },
+            },
+            scales: {
+              y: {
+                beginAtZero: false,
+                min: -10,
+                max: 40,
+              },
+            },
+          },
+        });
+      }
+
+      async function updateTemperatureChart() {
+        try {
+          const res = await fetch("/api/temperature-history");
+          const data = await res.json();
+          const history = data.history || [];
+
+          if (temperatureChart && history.length > 0) {
+            const labels = history.map((entry) => {
+              const date = new Date(entry.time);
+              return date.toLocaleTimeString();
+            });
+            const temps = history.map((entry) => entry.temp);
+
+            temperatureChart.data.labels = labels;
+            temperatureChart.data.datasets[0].data = temps;
+            temperatureChart.update();
+          }
+        } catch (err) {
+          console.error("Failed to fetch temperature history", err);
+        }
       }
 
       async function refreshStatus() {
@@ -218,6 +316,14 @@
 
           temperatureEl.textContent = fmt(data.temperature, " C");
           patternEl.textContent = data.pattern || "OFF";
+
+          // Update temp responsive button state
+          if (data.pattern === "TEMPERATURE_RESPONSIVE") {
+            tempResponsiveBtn.classList.add("active");
+          } else {
+            tempResponsiveBtn.classList.remove("active");
+          }
+
           if (data.speed) {
             speedSlider.value = data.speed;
             speedValue.textContent = data.speed;
@@ -248,6 +354,29 @@
         }
       }
 
+      async function setTemperatureResponsive(enabled) {
+        try {
+          const res = await fetch("/api/temperature-responsive", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ enabled }),
+          });
+
+          const data = await res.json();
+          if (!data.ok) {
+            tempStatus.textContent = "Failed to update mode";
+            return;
+          }
+
+          tempStatus.textContent = enabled
+            ? "Temperature mode enabled"
+            : "Temperature mode disabled";
+          await refreshStatus();
+        } catch (err) {
+          tempStatus.textContent = "Mode update failed";
+        }
+      }
+
       async function setSpeed(speed) {
         try {
           const res = await fetch("/api/speed", {
@@ -273,6 +402,12 @@
         btn.addEventListener("click", () => setPattern(btn.dataset.pattern));
       });
 
+      tempResponsiveBtn.addEventListener("click", () => {
+        const isCurrentlyEnabled =
+          tempResponsiveBtn.classList.contains("active");
+        setTemperatureResponsive(!isCurrentlyEnabled);
+      });
+
       speedSlider.addEventListener("input", (e) => {
         speedValue.textContent = e.target.value;
       });
@@ -281,8 +416,11 @@
         setSpeed(e.target.value);
       });
 
+      initChart();
       refreshStatus();
+      updateTemperatureChart();
       setInterval(refreshStatus, 1000);
+      setInterval(updateTemperatureChart, 2000);
     </script>
   </body>
 </html>
