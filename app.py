@@ -15,7 +15,7 @@ latest_state = {
     "humidity": None,
     "light": None,
     "pattern": "OFF",
-    "speed": 300,
+    "speed": 500,
     "updated_at": None,
 }
 

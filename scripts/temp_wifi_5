@@ -37,7 +37,7 @@ unsigned long lastPatternStepMs = 0;
 int chaseStep = 0;
 bool blinkOn = false;
 int alternateIndex = 0;
-unsigned long currentSpeed = 300; // Speed in milliseconds (100-3000)
+unsigned long currentSpeed = 500; // Speed in milliseconds (500-3000)
 
 // Pin
 const int sensorPin = 5; // TMP36 VOUT (GPIO34/ADC1_CH6)
@@ -146,8 +146,8 @@ static void pollPattern()
             }
 
             // Read speed from server (100-3000 ms)
-            unsigned long speed = doc["speed"] | 300;
-            if (speed >= 100 && speed <= 3000)
+            unsigned long speed = doc["speed"] | 500;
+            if (speed >= 500 && speed <= 3000)
             {
                 currentSpeed = speed;
                 Serial.print("Speed updated to: ");
