@@ -7,7 +7,7 @@ app = Flask(__name__)
 state_lock = Lock()
 
 # Valid LED patterns
-VALID_PATTERNS = ["OFF", "BLINK", "WAVE", "RAINBOW", "FLICKER", "TEMPERATURE_RESPONSIVE"]
+VALID_PATTERNS = ["OFF", "BLINK", "WAVE", "RAINBOW", "FLICKER", "TEMPERATURE_RESPONSIVE", "MANUAL"]
 
 # In-memory state for latest readings and LED pattern.
 latest_state = {
@@ -16,6 +16,7 @@ latest_state = {
     "light": None,
     "pattern": "OFF",
     "speed": 500,
+    "led_states": [True, False, False, False, False],
     "updated_at": None,
 }
 
@@ -23,7 +24,7 @@ latest_state = {
 temperature_history = deque(maxlen=60)
 
 # Deviation threshold for anomaly detection (°C)
-TEMP_ANOMALY_THRESHOLD = 2.0
+TEMP_ANOMALY_THRESHOLD = 2
 
 
 @app.get("/")
@@ -45,18 +46,18 @@ def post_sensor_data():
         if "temperature" in payload:
             new_temp = payload["temperature"]
             
-            # Check if this reading is an anomaly by comparing to last recorded reading
+            # Only add to history if change is reasonable (ignore spikes > 5°C)
+            should_record = False
             if temperature_history:
                 last_recorded = temperature_history[-1]["temp"]
-                # Only add temperature if it's consistent (within threshold) or represents a gradual change
-                if abs(new_temp - last_recorded) <= TEMP_ANOMALY_THRESHOLD:
-                    temperature_history.append({
-                        "temp": new_temp,
-                        "time": datetime.now(timezone.utc).isoformat()
-                    })
-                # If deviation is too large, skip this reading to filter glitches
+                # Accept if change is <= 5°C
+                if abs(new_temp - last_recorded) <= 5:
+                    should_record = True
             else:
                 # First reading, always accept
+                should_record = True
+            
+            if should_record:
                 temperature_history.append({
                     "temp": new_temp,
                     "time": datetime.now(timezone.utc).isoformat()
@@ -96,24 +97,6 @@ def set_pattern():
     return jsonify({"ok": True, "pattern": latest_state["pattern"]})
 
 
-@app.post("/api/speed")
-def set_speed():
-    payload = request.get_json(silent=True) or {}
-    speed = payload.get("speed")
-
-    if speed is None or not isinstance(speed, int) or speed < 500 or speed > 3000:
-        return jsonify({
-            "ok": False,
-            "error": "Speed must be an integer between 500 and 3000 ms"
-        }), 400
-
-    with state_lock:
-        latest_state["speed"] = speed
-        latest_state["updated_at"] = datetime.now(timezone.utc).isoformat()
-
-    return jsonify({"ok": True, "speed": latest_state["speed"]})
-
-
 @app.get("/api/temperature-history")
 def get_temperature_history():
     with state_lock:
@@ -133,6 +116,32 @@ def set_temperature_responsive():
         latest_state["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     return jsonify({"ok": True, "pattern": latest_state["pattern"]})
+
+
+@app.post("/api/manual-led")
+def set_manual_led():
+    payload = request.get_json(silent=True) or {}
+    states = payload.get("states")
+
+    if not states or not isinstance(states, list) or len(states) != 5:
+        return jsonify({
+            "ok": False,
+            "error": "States must be a list of 5 boolean values"
+        }), 400
+
+    for state in states:
+        if not isinstance(state, bool):
+            return jsonify({
+                "ok": False,
+                "error": "Each state must be a boolean (true/false)"
+            }), 400
+
+    with state_lock:
+        latest_state["led_states"] = states
+        latest_state["pattern"] = "MANUAL"
+        latest_state["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    return jsonify({"ok": True, "states": latest_state["led_states"], "pattern": "MANUAL"})
 
 
 if __name__ == "__main__":

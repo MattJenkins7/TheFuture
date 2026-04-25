@@ -115,53 +115,6 @@
         font-size: 0.9rem;
       }
 
-      .speed-control {
-        margin-top: 18px;
-      }
-
-      .speed-display {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 12px;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
-
-      .speed-value {
-        font-size: 1.5rem;
-        font-weight: 700;
-      }
-
-      input[type="range"] {
-        width: 100%;
-        height: 8px;
-        border-radius: 5px;
-        background: #e0e0e0;
-        outline: none;
-        -webkit-appearance: none;
-        margin-top: 8px;
-      }
-
-      input[type="range"]::-webkit-slider-thumb {
-        -webkit-appearance: none;
-        appearance: none;
-        width: 24px;
-        height: 24px;
-        border-radius: 50%;
-        background: var(--accent);
-        cursor: pointer;
-      }
-
-      input[type="range"]::-moz-range-thumb {
-        width: 24px;
-        height: 24px;
-        border-radius: 50%;
-        background: var(--accent);
-        cursor: pointer;
-        border: none;
-      }
-
       .chart-container {
         position: relative;
         height: 250px;
@@ -174,6 +127,48 @@
 
       button.active {
         background: var(--ok);
+      }
+
+      .manual-controls {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 10px;
+        margin-top: 12px;
+      }
+
+      .led-btn {
+        aspect-ratio: 1;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 0.9rem;
+        transition:
+          transform 0.2s,
+          opacity 0.2s,
+          box-shadow 0.2s;
+        opacity: 0.5;
+      }
+
+      .led-btn:hover {
+        transform: scale(1.05);
+      }
+
+      .led-btn.on {
+        opacity: 1;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+      }
+
+      .led-btn.red {
+        background: #ff4444;
+      }
+
+      .led-btn.yellow {
+        background: #ffdd00;
+      }
+
+      .led-btn.green {
+        background: #00dd00;
       }
 
       /* Mobile responsive styles */
@@ -329,24 +324,6 @@
         <div class="status" id="status"></div>
       </section>
 
-      <section class="card speed-control">
-        <div class="label">LED Speed</div>
-        <div class="speed-display">
-          <input
-            type="range"
-            id="speedSlider"
-            min="500"
-            max="3000"
-            value="500"
-            step="50"
-          />
-        </div>
-        <div style="text-align: center; margin-top: 8px">
-          <span class="speed-value" id="speedValue">500</span> ms
-        </div>
-        <div class="status" id="speedStatus"></div>
-      </section>
-
       <section class="card temp-responsive-section">
         <div class="label">Temperature Responsive Mode</div>
         <div class="buttons">
@@ -355,6 +332,28 @@
           </button>
         </div>
         <div class="status" id="tempStatus"></div>
+      </section>
+
+      <section class="card">
+        <div class="label">Manual LED Control</div>
+        <div class="manual-controls">
+          <button class="led-btn red on" data-index="0" title="Red (LED 1)">
+            1
+          </button>
+          <button class="led-btn yellow" data-index="1" title="Yellow (LED 2)">
+            2
+          </button>
+          <button class="led-btn green" data-index="2" title="Green (LED 3)">
+            3
+          </button>
+          <button class="led-btn yellow" data-index="3" title="Yellow (LED 4)">
+            4
+          </button>
+          <button class="led-btn red" data-index="4" title="Red (LED 5)">
+            5
+          </button>
+        </div>
+        <div class="status" id="manualStatus"></div>
       </section>
 
       <section class="card">
@@ -370,13 +369,12 @@
       const temperatureEl = document.getElementById("temperature");
       const patternEl = document.getElementById("pattern");
       const statusEl = document.getElementById("status");
-      const speedSlider = document.getElementById("speedSlider");
-      const speedValue = document.getElementById("speedValue");
-      const speedStatus = document.getElementById("speedStatus");
       const tempStatus = document.getElementById("tempStatus");
       const tempResponsiveBtn = document.getElementById("tempResponsiveBtn");
+      const manualStatus = document.getElementById("manualStatus");
 
       let temperatureChart = null;
+      let ledStates = [true, false, false, false, false];
 
       function fmt(value, unit = "") {
         return value === null || value === undefined ? "--" : `${value}${unit}`;
@@ -449,7 +447,20 @@
           const res = await fetch("/api/status");
           const data = await res.json();
 
-          temperatureEl.textContent = fmt(data.temperature, " C");
+          try {
+            const histRes = await fetch("/api/temperature-history");
+            const histData = await histRes.json();
+            const history = histData.history || [];
+            if (history.length > 0) {
+              const latestTemp = history[history.length - 1].temp;
+              temperatureEl.textContent = fmt(latestTemp, " C");
+            } else {
+              temperatureEl.textContent = fmt(data.temperature, " C");
+            }
+          } catch (err) {
+            temperatureEl.textContent = fmt(data.temperature, " C");
+          }
+
           patternEl.textContent = data.pattern || "OFF";
 
           // Update temp responsive button state
@@ -459,9 +470,10 @@
             tempResponsiveBtn.classList.remove("active");
           }
 
-          if (data.speed) {
-            speedSlider.value = data.speed;
-            speedValue.textContent = data.speed;
+          // Update LED states if available
+          if (data.led_states) {
+            ledStates = data.led_states;
+            updateLEDButtons();
           }
         } catch (err) {
           statusEl.textContent = "Failed to fetch live data";
@@ -512,29 +524,50 @@
         }
       }
 
-      async function setSpeed(speed) {
+      async function toggleLED(index) {
+        ledStates[index] = !ledStates[index];
         try {
-          const res = await fetch("/api/speed", {
+          const res = await fetch("/api/manual-led", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ speed: parseInt(speed) }),
+            body: JSON.stringify({ states: ledStates }),
           });
 
           const data = await res.json();
           if (!data.ok) {
-            speedStatus.textContent = data.error || "Speed update failed";
+            ledStates[index] = !ledStates[index];
+            manualStatus.textContent = data.error || "LED update failed";
             return;
           }
 
-          speedStatus.textContent = `Speed set to ${data.speed} ms`;
-          speedValue.textContent = data.speed;
+          updateLEDButtons();
+          manualStatus.textContent = "LED updated";
         } catch (err) {
-          speedStatus.textContent = "Speed update failed";
+          ledStates[index] = !ledStates[index];
+          manualStatus.textContent = "LED update failed";
         }
+      }
+
+      function updateLEDButtons() {
+        document.querySelectorAll(".led-btn").forEach((btn) => {
+          const index = parseInt(btn.dataset.index);
+          if (ledStates[index]) {
+            btn.classList.add("on");
+          } else {
+            btn.classList.remove("on");
+          }
+        });
       }
 
       document.querySelectorAll("button[data-pattern]").forEach((btn) => {
         btn.addEventListener("click", () => setPattern(btn.dataset.pattern));
+      });
+
+      document.querySelectorAll(".led-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const index = parseInt(btn.dataset.index);
+          toggleLED(index);
+        });
       });
 
       tempResponsiveBtn.addEventListener("click", () => {
@@ -543,15 +576,8 @@
         setTemperatureResponsive(!isCurrentlyEnabled);
       });
 
-      speedSlider.addEventListener("input", (e) => {
-        speedValue.textContent = e.target.value;
-      });
-
-      speedSlider.addEventListener("change", (e) => {
-        setSpeed(e.target.value);
-      });
-
       initChart();
+      updateLEDButtons();
       refreshStatus();
       updateTemperatureChart();
       setInterval(refreshStatus, 1000);

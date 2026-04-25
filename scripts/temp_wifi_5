@@ -26,18 +26,20 @@ enum PatternMode
     PATTERN_BLINK,
     PATTERN_CHASE,
     PATTERN_ALTERNATE,
-    PATTERN_FLICKER
+    PATTERN_FLICKER,
+    PATTERN_MANUAL
 };
 
 PatternMode currentPatternMode = PATTERN_OFF;
 String currentPattern = "OFF";
+bool ledStates[5] = {false, false, false, false, false};
 unsigned long lastPatternPollMs = 0;
-const unsigned long patternPollIntervalMs = 200; // Poll more frequently for responsive slider
+const unsigned long patternPollIntervalMs = 300;
 unsigned long lastPatternStepMs = 0;
 int chaseStep = 0;
 bool blinkOn = false;
 int alternateIndex = 0;
-unsigned long currentSpeed = 500; // Speed in milliseconds (500-3000)
+const unsigned long currentSpeed = 500; // Fixed speed in milliseconds
 
 // Pin
 const int sensorPin = 5; // TMP36 VOUT (GPIO34/ADC1_CH6)
@@ -77,7 +79,7 @@ void setup()
 
     randomSeed(analogRead(sensorPin));
 
-    Serial.println("Reading TMP36 sensor (update every 1 second)...\n");
+    Serial.println("Reading TMP36 sensor (update every 3 seconds)...\n");
 }
 
 static void setLeds(bool led1On, bool led2On, bool led3On, bool led4On, bool led5On)
@@ -107,6 +109,10 @@ static PatternMode parsePattern(const String &pattern)
     {
         return PATTERN_FLICKER;
     }
+    if (pattern == "MANUAL")
+    {
+        return PATTERN_MANUAL;
+    }
     return PATTERN_OFF;
 }
 
@@ -118,7 +124,11 @@ static void applyPattern(const String &pattern)
     chaseStep = 0;
     blinkOn = false;
     alternateIndex = 0;
-    setLeds(false, false, false, false, false);
+
+    if (currentPatternMode != PATTERN_MANUAL)
+    {
+        setLeds(false, false, false, false, false);
+    }
 }
 
 static void pollPattern()
@@ -134,7 +144,9 @@ static void pollPattern()
     if (code == 200)
     {
         String body = http.getString();
-        StaticJsonDocument<256> doc;
+        Serial.println("API Response received");
+        Serial.println(body);
+        StaticJsonDocument<1024> doc;
         DeserializationError err = deserializeJson(doc, body);
         if (!err)
         {
@@ -145,14 +157,28 @@ static void pollPattern()
                 applyPattern(currentPattern);
             }
 
-            // Read speed from server (100-3000 ms)
-            unsigned long speed = doc["speed"] | 500;
-            if (speed >= 500 && speed <= 3000)
+            // Read LED states if MANUAL pattern
+            if (currentPattern == "MANUAL" && doc.containsKey("led_states"))
             {
-                currentSpeed = speed;
-                Serial.print("Speed updated to: ");
-                Serial.print(currentSpeed);
-                Serial.println(" ms");
+                JsonArray states = doc["led_states"];
+                Serial.print("Found MANUAL pattern with led_states. Size: ");
+                Serial.println(states.size());
+                if (states.size() == 5)
+                {
+                    for (int i = 0; i < 5; i++)
+                    {
+                        ledStates[i] = states[i].as<bool>();
+                        Serial.print("LED ");
+                        Serial.print(i);
+                        Serial.print(": ");
+                        Serial.println(ledStates[i] ? "ON" : "OFF");
+                    }
+                    Serial.println("LED states updated");
+                }
+            }
+            else if (currentPattern == "MANUAL")
+            {
+                Serial.println("MANUAL pattern detected but no led_states in JSON");
             }
         }
     }
@@ -252,6 +278,19 @@ static void updatePattern(unsigned long now)
                 random(0, 2),
                 random(0, 2));
         }
+        return;
+    }
+
+    if (currentPatternMode == PATTERN_MANUAL)
+    {
+        setLeds(ledStates[0], ledStates[1], ledStates[2], ledStates[3], ledStates[4]);
+        Serial.print("MANUAL: LED states: ");
+        for (int i = 0; i < 5; i++)
+        {
+            Serial.print(ledStates[i] ? "1" : "0");
+        }
+        Serial.println();
+        return;
     }
 }
 
@@ -260,12 +299,8 @@ void loop()
     // Read TMP36 ADC
     int adcValue = analogRead(sensorPin);
 
-    // Convert ADC reading to voltage
     float voltage = adcValue * referenceVoltage / ADC_MAX;
 
-    // TMP36 formula: Temperature(°C) = (Voltage - 0.5V) * 100
-    // At 25°C: output is 0.75V
-    // Sensitivity: 10mV per °C
     float temperatureC = (voltage - 0.5) * 100.0;
 
     // Print results
