@@ -35,7 +35,7 @@
       .wrap {
         max-width: 900px;
         margin: 0 auto;
-        padding: 24px;
+        padding: 16px;
       }
 
       .header {
@@ -44,7 +44,7 @@
 
       h1 {
         margin: 0 0 4px;
-        font-size: 2rem;
+        font-size: 1.75rem;
       }
 
       .sub {
@@ -53,61 +53,70 @@
 
       .grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 14px;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 12px;
       }
 
       .card {
         background: var(--card);
-        border-radius: 14px;
-        padding: 16px;
+        border-radius: 12px;
+        padding: 14px;
         box-shadow: 0 10px 28px rgba(18, 38, 75, 0.08);
       }
 
       .label {
-        font-size: 0.9rem;
+        font-size: 0.85rem;
         color: var(--muted);
       }
 
       .value {
         margin-top: 6px;
-        font-size: 1.6rem;
+        font-size: 1.5rem;
         font-weight: 700;
       }
 
       .pattern {
-        margin-top: 22px;
+        margin-top: 18px;
       }
 
       .buttons {
         margin-top: 10px;
         display: flex;
         flex-wrap: wrap;
-        gap: 10px;
+        gap: 8px;
       }
 
       button {
         border: none;
-        border-radius: 10px;
-        padding: 10px 14px;
+        border-radius: 8px;
+        padding: 12px 16px;
         background: var(--accent);
         color: #fff;
         cursor: pointer;
         font-weight: 600;
+        font-size: 0.95rem;
+        transition: background 0.2s;
+        flex: 1;
+        min-width: 80px;
       }
 
       button:hover {
         background: var(--accent-2);
       }
 
+      button:active {
+        transform: scale(0.98);
+      }
+
       .status {
-        margin-top: 16px;
+        margin-top: 12px;
         color: var(--ok);
         min-height: 1.2em;
+        font-size: 0.9rem;
       }
 
       .speed-control {
-        margin-top: 22px;
+        margin-top: 18px;
       }
 
       .speed-display {
@@ -115,10 +124,12 @@
         justify-content: space-between;
         align-items: center;
         margin-bottom: 12px;
+        flex-wrap: wrap;
+        gap: 8px;
       }
 
       .speed-value {
-        font-size: 1.6rem;
+        font-size: 1.5rem;
         font-weight: 700;
       }
 
@@ -129,21 +140,22 @@
         background: #e0e0e0;
         outline: none;
         -webkit-appearance: none;
+        margin-top: 8px;
       }
 
       input[type="range"]::-webkit-slider-thumb {
         -webkit-appearance: none;
         appearance: none;
-        width: 20px;
-        height: 20px;
+        width: 24px;
+        height: 24px;
         border-radius: 50%;
         background: var(--accent);
         cursor: pointer;
       }
 
       input[type="range"]::-moz-range-thumb {
-        width: 20px;
-        height: 20px;
+        width: 24px;
+        height: 24px;
         border-radius: 50%;
         background: var(--accent);
         cursor: pointer;
@@ -152,16 +164,139 @@
 
       .chart-container {
         position: relative;
-        height: 300px;
+        height: 250px;
         margin-top: 16px;
       }
 
       .temp-responsive-section {
-        margin-top: 22px;
+        margin-top: 18px;
       }
 
       button.active {
         background: var(--ok);
+      }
+
+      /* Mobile responsive styles */
+      @media (max-width: 768px) {
+        .wrap {
+          padding: 12px;
+        }
+
+        h1 {
+          font-size: 1.5rem;
+        }
+
+        .grid {
+          grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+          gap: 10px;
+        }
+
+        .card {
+          padding: 12px;
+          border-radius: 10px;
+        }
+
+        .label {
+          font-size: 0.8rem;
+        }
+
+        .value {
+          font-size: 1.3rem;
+          margin-top: 4px;
+        }
+
+        .buttons {
+          gap: 6px;
+        }
+
+        button {
+          padding: 10px 12px;
+          font-size: 0.9rem;
+          min-width: 70px;
+        }
+
+        .speed-value {
+          font-size: 1.3rem;
+        }
+
+        .chart-container {
+          height: 200px;
+        }
+
+        .status {
+          font-size: 0.85rem;
+        }
+      }
+
+      @media (max-width: 480px) {
+        .wrap {
+          padding: 10px;
+        }
+
+        h1 {
+          font-size: 1.25rem;
+          margin: 0 0 2px;
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+          gap: 8px;
+        }
+
+        .card {
+          padding: 10px;
+          border-radius: 8px;
+        }
+
+        .label {
+          font-size: 0.75rem;
+        }
+
+        .value {
+          font-size: 1.2rem;
+          margin-top: 4px;
+        }
+
+        .buttons {
+          gap: 6px;
+          justify-content: space-between;
+        }
+
+        button {
+          padding: 10px 10px;
+          font-size: 0.85rem;
+          flex: 1;
+          min-width: 60px;
+        }
+
+        .speed-display {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .speed-value {
+          font-size: 1.2rem;
+        }
+
+        .chart-container {
+          height: 180px;
+        }
+
+        .status {
+          font-size: 0.8rem;
+        }
+
+        .pattern {
+          margin-top: 14px;
+        }
+
+        .speed-control {
+          margin-top: 14px;
+        }
+
+        .temp-responsive-section {
+          margin-top: 14px;
+        }
       }
     </style>
   </head>
