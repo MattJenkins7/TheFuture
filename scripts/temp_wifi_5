@@ -8,8 +8,8 @@ const char *WIFI_SSID = "AndroidAP33D3";
 const char *WIFI_PASS = "password";
 
 // Flask server
-const char *SERVER_URL = "http://10.121.184.156:5000/api/sensor-data";
-const char *STATUS_URL = "http://10.121.184.156:5000/api/status";
+const char *SERVER_URL = "http://10.82.46.156:5000/api/sensor-data";
+const char *STATUS_URL = "http://10.82.46.156:5000/api/status";
 
 // LED pins
 const int LED_1 = 6;
