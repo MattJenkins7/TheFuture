@@ -6,12 +6,12 @@
     <title>ESP32 Sensor Dashboard</title>
     <style>
       :root {
-        --bg: #f3f7ff;
-        --card: #ffffff;
-        --text: #13223a;
-        --muted: #50617d;
+        --bg: #f5f5f5;
+        --card: #fff;
+        --text: #222;
+        --muted: #666;
         --accent: #1677ff;
-        --accent-2: #0f4fae;
+        --accent-dark: #0f4fae;
         --ok: #0f9d58;
       }
 
@@ -21,298 +21,155 @@
 
       body {
         margin: 0;
-        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         color: var(--text);
-        background: radial-gradient(
-          circle at 10% 20%,
-          #e8f2ff 0%,
-          var(--bg) 45%,
-          #eef8ff 100%
-        );
+        background: var(--bg);
         min-height: 100vh;
       }
 
       .wrap {
         max-width: 900px;
         margin: 0 auto;
-        padding: 16px;
-      }
-
-      .header {
-        margin-bottom: 18px;
+        padding: 1rem;
       }
 
       h1 {
-        margin: 0 0 4px;
+        margin: 0 0 1rem;
         font-size: 1.75rem;
-      }
-
-      .sub {
-        color: var(--muted);
       }
 
       .grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-        gap: 12px;
+        gap: 1rem;
+        margin-bottom: 1rem;
       }
 
       .card {
         background: var(--card);
-        border-radius: 12px;
-        padding: 14px;
-        box-shadow: 0 10px 28px rgba(18, 38, 75, 0.08);
+        border-radius: 8px;
+        padding: 1rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        margin-bottom: 1rem;
       }
 
       .label {
-        font-size: 0.85rem;
+        font-size: 0.875rem;
         color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
       }
 
       .value {
-        margin-top: 6px;
+        margin-top: 0.5rem;
         font-size: 1.5rem;
-        font-weight: 700;
-      }
-
-      .pattern {
-        margin-top: 18px;
+        font-weight: 600;
       }
 
       .buttons {
-        margin-top: 10px;
+        margin-top: 0.75rem;
         display: flex;
         flex-wrap: wrap;
-        gap: 8px;
+        gap: 0.5rem;
       }
 
       button {
         border: none;
-        border-radius: 8px;
-        padding: 12px 16px;
+        border-radius: 6px;
+        padding: 0.75rem 1rem;
         background: var(--accent);
         color: #fff;
         cursor: pointer;
         font-weight: 600;
-        font-size: 0.95rem;
-        transition: background 0.2s;
+        font-size: 0.9rem;
         flex: 1;
-        min-width: 80px;
+        min-width: 70px;
       }
 
       button:hover {
-        background: var(--accent-2);
+        background: var(--accent-dark);
       }
-
-      button:active {
-        transform: scale(0.98);
+      button.active {
+        background: var(--ok);
       }
 
       .status {
-        margin-top: 12px;
+        margin-top: 0.75rem;
         color: var(--ok);
+        font-size: 0.875rem;
         min-height: 1.2em;
-        font-size: 0.9rem;
       }
 
       .chart-container {
         position: relative;
         height: 250px;
-        margin-top: 16px;
-      }
-
-      .temp-responsive-section {
-        margin-top: 18px;
-      }
-
-      button.active {
-        background: var(--ok);
+        margin-top: 0.75rem;
       }
 
       .manual-controls {
         display: grid;
         grid-template-columns: repeat(5, 1fr);
-        gap: 10px;
-        margin-top: 12px;
+        gap: 0.75rem;
+        margin-top: 0.75rem;
       }
 
       .led-btn {
         aspect-ratio: 1;
         border: none;
-        border-radius: 8px;
+        border-radius: 50%;
         cursor: pointer;
         font-weight: 600;
-        font-size: 0.9rem;
-        transition:
-          transform 0.2s,
-          opacity 0.2s,
-          box-shadow 0.2s;
-        opacity: 0.5;
+        opacity: 0.4;
       }
 
       .led-btn:hover {
-        transform: scale(1.05);
+        opacity: 0.6;
       }
-
       .led-btn.on {
         opacity: 1;
-        box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
       }
 
-      .led-btn.red {
-        background: #ff4444;
-      }
-
-      .led-btn.yellow {
-        background: #ffdd00;
-      }
-
-      .led-btn.green {
-        background: #00dd00;
-      }
-
-      /* Mobile responsive styles */
       @media (max-width: 768px) {
-        .wrap {
-          padding: 12px;
+        .grid {
+          gap: 0.75rem;
         }
-
         h1 {
           font-size: 1.5rem;
         }
-
-        .grid {
-          grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-          gap: 10px;
-        }
-
-        .card {
-          padding: 12px;
-          border-radius: 10px;
-        }
-
-        .label {
-          font-size: 0.8rem;
-        }
-
-        .value {
-          font-size: 1.3rem;
-          margin-top: 4px;
-        }
-
-        .buttons {
-          gap: 6px;
-        }
-
-        button {
-          padding: 10px 12px;
-          font-size: 0.9rem;
-          min-width: 70px;
-        }
-
-        .speed-value {
-          font-size: 1.3rem;
-        }
-
         .chart-container {
           height: 200px;
-        }
-
-        .status {
-          font-size: 0.85rem;
         }
       }
 
       @media (max-width: 480px) {
-        .wrap {
-          padding: 10px;
-        }
-
         h1 {
           font-size: 1.25rem;
-          margin: 0 0 2px;
         }
-
         .grid {
           grid-template-columns: 1fr;
-          gap: 8px;
         }
-
-        .card {
-          padding: 10px;
-          border-radius: 8px;
-        }
-
-        .label {
-          font-size: 0.75rem;
-        }
-
-        .value {
-          font-size: 1.2rem;
-          margin-top: 4px;
-        }
-
-        .buttons {
-          gap: 6px;
-          justify-content: space-between;
-        }
-
-        button {
-          padding: 10px 10px;
-          font-size: 0.85rem;
-          flex: 1;
-          min-width: 60px;
-        }
-
-        .speed-display {
-          flex-direction: column;
-          align-items: flex-start;
-        }
-
-        .speed-value {
-          font-size: 1.2rem;
-        }
-
         .chart-container {
           height: 180px;
-        }
-
-        .status {
-          font-size: 0.8rem;
-        }
-
-        .pattern {
-          margin-top: 14px;
-        }
-
-        .speed-control {
-          margin-top: 14px;
-        }
-
-        .temp-responsive-section {
-          margin-top: 14px;
         }
       }
     </style>
   </head>
   <body>
     <main class="wrap">
-      <section class="header">
-        <h1>ESP32 Live Dashboard</h1>
-      </section>
+      <h1>ESP32 Live Dashboard</h1>
 
       <section class="grid">
         <article class="card">
           <div class="label">Temperature</div>
-          <div class="value" id="temperature">--</div>
+          <div class="value" id="temperature">-- °C</div>
         </article>
         <article class="card">
-          <div class="label">Current LED Pattern</div>
+          <div class="label">LED Pattern</div>
           <div class="value" id="pattern">OFF</div>
         </article>
       </section>
 
-      <section class="card pattern">
+      <section class="card">
         <div class="label">Change LED Pattern</div>
         <div class="buttons">
           <button data-pattern="OFF">OFF</button>
@@ -324,7 +181,7 @@
         <div class="status" id="status"></div>
       </section>
 
-      <section class="card temp-responsive-section">
+      <section class="card">
         <div class="label">Temperature Responsive Mode</div>
         <div class="buttons">
           <button id="tempResponsiveBtn" data-pattern="TEMPERATURE_RESPONSIVE">
@@ -337,19 +194,44 @@
       <section class="card">
         <div class="label">Manual LED Control</div>
         <div class="manual-controls">
-          <button class="led-btn red on" data-index="0" title="Red (LED 1)">
+          <button
+            class="led-btn on"
+            style="background: #ff4444"
+            data-index="0"
+            title="LED 1"
+          >
             1
           </button>
-          <button class="led-btn yellow" data-index="1" title="Yellow (LED 2)">
+          <button
+            class="led-btn"
+            style="background: #ffdd00"
+            data-index="1"
+            title="LED 2"
+          >
             2
           </button>
-          <button class="led-btn green" data-index="2" title="Green (LED 3)">
+          <button
+            class="led-btn"
+            style="background: #00dd00"
+            data-index="2"
+            title="LED 3"
+          >
             3
           </button>
-          <button class="led-btn yellow" data-index="3" title="Yellow (LED 4)">
+          <button
+            class="led-btn"
+            style="background: #ffdd00"
+            data-index="3"
+            title="LED 4"
+          >
             4
           </button>
-          <button class="led-btn red" data-index="4" title="Red (LED 5)">
+          <button
+            class="led-btn"
+            style="background: #ff4444"
+            data-index="4"
+            title="LED 5"
+          >
             5
           </button>
         </div>
@@ -376,10 +258,6 @@
       let temperatureChart = null;
       let ledStates = [true, false, false, false, false];
 
-      function fmt(value, unit = "") {
-        return value === null || value === undefined ? "--" : `${value}${unit}`;
-      }
-
       function initChart() {
         const ctx = document
           .getElementById("temperatureChart")
@@ -403,18 +281,13 @@
           options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: {
-              legend: {
-                display: true,
-                position: "top",
-              },
-            },
+            plugins: { legend: { display: false } },
             scales: {
               y: {
                 beginAtZero: false,
-                min: -10,
-                max: 40,
+                ticks: { callback: (v) => v.toFixed(0) },
               },
+              x: { display: false },
             },
           },
         });
@@ -427,14 +300,16 @@
           const history = data.history || [];
 
           if (temperatureChart && history.length > 0) {
-            const labels = history.map((entry) => {
-              const date = new Date(entry.time);
-              return date.toLocaleTimeString();
-            });
-            const temps = history.map((entry) => entry.temp);
+            const temps = history.map((e) => e.temp);
+            const minTemp = Math.min(...temps);
+            const maxTemp = Math.max(...temps);
+            const range = maxTemp - minTemp;
+            const padding = Math.max(range * 0.2, 1);
 
-            temperatureChart.data.labels = labels;
+            temperatureChart.data.labels = history.map(() => "");
             temperatureChart.data.datasets[0].data = temps;
+            temperatureChart.options.scales.y.min = minTemp - padding;
+            temperatureChart.options.scales.y.max = maxTemp + padding;
             temperatureChart.update();
           }
         } catch (err) {
@@ -447,19 +322,10 @@
           const res = await fetch("/api/status");
           const data = await res.json();
 
-          try {
-            const histRes = await fetch("/api/temperature-history");
-            const histData = await histRes.json();
-            const history = histData.history || [];
-            if (history.length > 0) {
-              const latestTemp = history[history.length - 1].temp;
-              temperatureEl.textContent = fmt(latestTemp, " C");
-            } else {
-              temperatureEl.textContent = fmt(data.temperature, " C");
-            }
-          } catch (err) {
-            temperatureEl.textContent = fmt(data.temperature, " C");
-          }
+          temperatureEl.textContent =
+            data.temperature !== null
+              ? `${data.temperature.toFixed(1)} °C`
+              : "-- °C";
 
           patternEl.textContent = data.pattern || "OFF";
 
@@ -559,16 +425,19 @@
         });
       }
 
-      document.querySelectorAll("button[data-pattern]").forEach((btn) => {
-        btn.addEventListener("click", () => setPattern(btn.dataset.pattern));
-      });
+      document
+        .querySelectorAll("button[data-pattern]")
+        .forEach((btn) =>
+          btn.addEventListener("click", () => setPattern(btn.dataset.pattern)),
+        );
 
-      document.querySelectorAll(".led-btn").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const index = parseInt(btn.dataset.index);
-          toggleLED(index);
-        });
-      });
+      document
+        .querySelectorAll(".led-btn")
+        .forEach((btn) =>
+          btn.addEventListener("click", () =>
+            toggleLED(parseInt(btn.dataset.index)),
+          ),
+        );
 
       tempResponsiveBtn.addEventListener("click", () => {
         const isCurrentlyEnabled =

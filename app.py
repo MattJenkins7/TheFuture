@@ -6,25 +6,16 @@ from collections import deque
 app = Flask(__name__)
 state_lock = Lock()
 
-# Valid LED patterns
 VALID_PATTERNS = ["OFF", "BLINK", "WAVE", "RAINBOW", "FLICKER", "TEMPERATURE_RESPONSIVE", "MANUAL"]
 
-# In-memory state for latest readings and LED pattern.
 latest_state = {
     "temperature": None,
-    "humidity": None,
-    "light": None,
     "pattern": "OFF",
-    "speed": 500,
     "led_states": [True, False, False, False, False],
     "updated_at": None,
 }
 
-# Temperature history (store last 60 readings for ~5 minutes at 5sec intervals)
 temperature_history = deque(maxlen=60)
-
-# Deviation threshold for anomaly detection (°C)
-TEMP_ANOMALY_THRESHOLD = 2
 
 
 @app.get("/")
@@ -47,27 +38,13 @@ def post_sensor_data():
             new_temp = payload["temperature"]
             
             # Only add to history if change is reasonable (ignore spikes > 5°C)
-            should_record = False
-            if temperature_history:
-                last_recorded = temperature_history[-1]["temp"]
-                # Accept if change is <= 5°C
-                if abs(new_temp - last_recorded) <= 5:
-                    should_record = True
-            else:
-                # First reading, always accept
-                should_record = True
-            
-            if should_record:
+            if not temperature_history or abs(new_temp - temperature_history[-1]["temp"]) <= 5:
                 temperature_history.append({
                     "temp": new_temp,
                     "time": datetime.now(timezone.utc).isoformat()
                 })
             
             latest_state["temperature"] = new_temp
-        if "light" in payload:
-            latest_state["light"] = payload["light"]
-        if "pattern" in payload:
-            latest_state["pattern"] = str(payload["pattern"])
 
         latest_state["updated_at"] = datetime.now(timezone.utc).isoformat()
 
@@ -109,10 +86,7 @@ def set_temperature_responsive():
     enabled = payload.get("enabled", False)
 
     with state_lock:
-        if enabled:
-            latest_state["pattern"] = "TEMPERATURE_RESPONSIVE"
-        else:
-            latest_state["pattern"] = "OFF"
+        latest_state["pattern"] = "TEMPERATURE_RESPONSIVE" if enabled else "OFF"
         latest_state["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     return jsonify({"ok": True, "pattern": latest_state["pattern"]})
@@ -123,18 +97,11 @@ def set_manual_led():
     payload = request.get_json(silent=True) or {}
     states = payload.get("states")
 
-    if not states or not isinstance(states, list) or len(states) != 5:
+    if not isinstance(states, list) or len(states) != 5 or not all(isinstance(s, bool) for s in states):
         return jsonify({
             "ok": False,
             "error": "States must be a list of 5 boolean values"
         }), 400
-
-    for state in states:
-        if not isinstance(state, bool):
-            return jsonify({
-                "ok": False,
-                "error": "Each state must be a boolean (true/false)"
-            }), 400
 
     with state_lock:
         latest_state["led_states"] = states
@@ -145,4 +112,4 @@ def set_manual_led():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000)

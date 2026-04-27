@@ -27,28 +27,28 @@ enum PatternMode
     PATTERN_CHASE,
     PATTERN_ALTERNATE,
     PATTERN_FLICKER,
-    PATTERN_TEMPERATURE_RESPONSIVE
+    PATTERN_TEMPERATURE,
+    PATTERN_MANUAL
 };
 
 PatternMode currentPatternMode = PATTERN_OFF;
 String currentPattern = "OFF";
+bool ledStates[5] = {false, false, false, false, false};
 unsigned long lastPatternPollMs = 0;
-const unsigned long patternPollIntervalMs = 200; // Poll more frequently for responsive slider
+const unsigned long patternPollIntervalMs = 300;
 unsigned long lastPatternStepMs = 0;
 int chaseStep = 0;
 bool blinkOn = false;
 int alternateIndex = 0;
-const unsigned long currentSpeed = 500; // Fixed speed in milliseconds
+const unsigned long speed = 500;
 
-// Pin
-const int sensorPin = 5; // TMP36 VOUT (GPIO34/ADC1_CH6)
+const int sensorPin = 5;
 
-// ADC configuration
 const float referenceVoltage = 3.3;
 #define ADC_MAX 4095.0
 
-// Latest temperature reading for temperature-responsive mode
-float latestTemperature = 0.0;
+// Temperature storage
+float currentTemperature = 0.0;
 
 void setup()
 {
@@ -57,7 +57,6 @@ void setup()
 
     Serial.println("\n=== TMP36 Temperature Sensor Test ===");
 
-    // ADC configuration for 12-bit resolution
     analogReadResolution(12);
     analogSetPinAttenuation(sensorPin, ADC_11db);
 
@@ -80,8 +79,6 @@ void setup()
     Serial.println(WiFi.localIP());
 
     randomSeed(analogRead(sensorPin));
-
-    Serial.println("Reading TMP36 sensor (update every 1 second)...\n");
 }
 
 static void setLeds(bool led1On, bool led2On, bool led3On, bool led4On, bool led5On)
@@ -96,25 +93,17 @@ static void setLeds(bool led1On, bool led2On, bool led3On, bool led4On, bool led
 static PatternMode parsePattern(const String &pattern)
 {
     if (pattern == "BLINK")
-    {
         return PATTERN_BLINK;
-    }
     if (pattern == "WAVE")
-    {
         return PATTERN_CHASE;
-    }
     if (pattern == "RAINBOW")
-    {
         return PATTERN_ALTERNATE;
-    }
     if (pattern == "FLICKER")
-    {
         return PATTERN_FLICKER;
-    }
     if (pattern == "TEMPERATURE_RESPONSIVE")
-    {
-        return PATTERN_TEMPERATURE_RESPONSIVE;
-    }
+        return PATTERN_TEMPERATURE;
+    if (pattern == "MANUAL")
+        return PATTERN_MANUAL;
     return PATTERN_OFF;
 }
 
@@ -126,244 +115,221 @@ static void applyPattern(const String &pattern)
     chaseStep = 0;
     blinkOn = false;
     alternateIndex = 0;
-    setLeds(false, false, false, false, false);
+
+    if (currentPatternMode != PATTERN_MANUAL)
+    {
+        setLeds(false, false, false, false, false);
+    }
+}
+
+static int getTemperatureAsBinary(float temp)
+{
+    int tempInt = (int)temp;
+    if (tempInt < 0)
+        tempInt = 0;
+    if (tempInt > 31)
+        tempInt = 31;
+    return tempInt;
 }
 
 static void pollPattern()
 {
     if (WiFi.status() != WL_CONNECTED)
-    {
         return;
-    }
 
     HTTPClient http;
     http.begin(STATUS_URL);
     int code = http.GET();
     if (code == 200)
     {
-        String body = http.getString();
-        StaticJsonDocument<256> doc;
-        DeserializationError err = deserializeJson(doc, body);
+        StaticJsonDocument<1024> doc;
+        DeserializationError err = deserializeJson(doc, http.getStream());
         if (!err)
         {
             const char *pattern = doc["pattern"] | "OFF";
             if (currentPattern != pattern)
             {
-                currentPattern = pattern;
-                applyPattern(currentPattern);
+                applyPattern(pattern);
+            }
+
+            if (currentPattern == "MANUAL" && doc.containsKey("led_states"))
+            {
+                JsonArray states = doc["led_states"];
+                if (states.size() == 5)
+                {
+                    for (int i = 0; i < 5; i++)
+                    {
+                        ledStates[i] = states[i].as<bool>();
+                    }
+                }
             }
         }
-        http.end();
+    }
+    http.end();
+}
+
+static void updatePattern(unsigned long now)
+{
+    if (currentPatternMode == PATTERN_OFF)
+    {
+        return;
     }
 
-    static void updatePattern(unsigned long now)
+    if (currentPatternMode == PATTERN_BLINK)
     {
-        if (currentPatternMode == PATTERN_OFF)
+        if (now - lastPatternStepMs >= speed)
         {
-            return;
+            lastPatternStepMs = now;
+            blinkOn = !blinkOn;
+            setLeds(blinkOn, blinkOn, blinkOn, blinkOn, blinkOn);
         }
+        return;
+    }
 
-        if (currentPatternMode == PATTERN_BLINK)
+    if (currentPatternMode == PATTERN_CHASE)
+    {
+        if (now - lastPatternStepMs >= speed)
         {
-            if (now - lastPatternStepMs >= currentSpeed)
-            {
-                lastPatternStepMs = now;
-                blinkOn = !blinkOn;
-                setLeds(blinkOn, blinkOn, blinkOn, blinkOn, blinkOn);
-            }
-            return;
-        }
-
-        if (currentPatternMode == PATTERN_CHASE)
-        {
-            if (now - lastPatternStepMs >= currentSpeed)
-            {
-                lastPatternStepMs = now;
-                if (chaseStep == 0)
-                {
-                    setLeds(true, false, false, false, false);
-                }
-                else if (chaseStep == 1)
-                {
-                    setLeds(false, true, false, false, false);
-                }
-                else if (chaseStep == 2)
-                {
-                    setLeds(false, false, true, false, false);
-                }
-                else if (chaseStep == 3)
-                {
-                    setLeds(false, false, false, true, false);
-                }
-                else
-                {
-                    setLeds(false, false, false, false, true);
-                }
-                chaseStep = (chaseStep + 1) % 5;
-            }
-            return;
-        }
-
-        if (currentPatternMode == PATTERN_ALTERNATE)
-        {
-            if (now - lastPatternStepMs >= currentSpeed)
-            {
-                lastPatternStepMs = now;
-                // Ramp up: turn on lights one by one
-                // Ramp down: turn off lights one by one
-                if (alternateIndex < 5)
-                {
-                    // Ramp up phase (0-4)
-                    setLeds(
-                        alternateIndex >= 0,
-                        alternateIndex >= 1,
-                        alternateIndex >= 2,
-                        alternateIndex >= 3,
-                        alternateIndex >= 4);
-                }
-                else
-                {
-                    // Ramp down phase (5-9)
-                    int downIndex = 9 - alternateIndex;
-                    setLeds(
-                        downIndex >= 0,
-                        downIndex >= 1,
-                        downIndex >= 2,
-                        downIndex >= 3,
-                        downIndex >= 4);
-                }
-                alternateIndex = (alternateIndex + 1) % 10;
-            }
-            return;
-        }
-
-        if (currentPatternMode == PATTERN_FLICKER)
-        {
-            if (now - lastPatternStepMs >= currentSpeed / 2)
-            {
-                lastPatternStepMs = now;
-                setLeds(
-                    random(0, 2),
-                    random(0, 2),
-                    random(0, 2),
-                    random(0, 2),
-                    random(0, 2));
-            }
-        }
-
-        if (currentPatternMode == PATTERN_TEMPERATURE_RESPONSIVE)
-        {
-            // Map temperature to LED count and patterns
-            // < 15°C: 5 LEDs (cold) - blue indication
-            // 15-20°C: 4 LEDs
-            // 20-25°C: 3 LEDs
-            // 25-30°C: 2 LEDs
-            // 30-35°C: 1 LED
-            // > 35°C: Flash red (hot) - blink pattern
-
-            if (latestTemperature < 15.0)
-            {
-                setLeds(true, true, true, true, true);
-            }
-            else if (latestTemperature < 20.0)
-            {
-                setLeds(true, true, true, true, false);
-            }
-            else if (latestTemperature < 25.0)
-            {
-                setLeds(true, true, true, false, false);
-            }
-            else if (latestTemperature < 30.0)
-            {
-                setLeds(true, true, false, false, false);
-            }
-            else if (latestTemperature < 35.0)
+            lastPatternStepMs = now;
+            if (chaseStep == 0)
             {
                 setLeds(true, false, false, false, false);
             }
+            else if (chaseStep == 1)
+            {
+                setLeds(false, true, false, false, false);
+            }
+            else if (chaseStep == 2)
+            {
+                setLeds(false, false, true, false, false);
+            }
+            else if (chaseStep == 3)
+            {
+                setLeds(false, false, false, true, false);
+            }
             else
             {
-                // Temperature is hot (> 35°C), flash all LEDs fast
-                if (now - lastPatternStepMs >= 200)
-                {
-                    lastPatternStepMs = now;
-                    blinkOn = !blinkOn;
-                    setLeds(blinkOn, blinkOn, blinkOn, blinkOn, blinkOn);
-                }
+                setLeds(false, false, false, false, true);
             }
+            chaseStep = (chaseStep + 1) % 5;
         }
+        return;
     }
 
-    void loop()
+    if (currentPatternMode == PATTERN_ALTERNATE)
     {
-        // Read TMP36 ADC
-        int adcValue = analogRead(sensorPin);
-
-        // Convert ADC reading to voltage
-        float voltage = adcValue * referenceVoltage / ADC_MAX;
-
-        // TMP36 formula: Temperature(°C) = (Voltage - 0.5V) * 100
-        // At 25°C: output is 0.75V
-        // Sensitivity: 10mV per °C
-        float temperatureC = (voltage - 0.5) * 100.0;
-
-        // Store latest temperature for temperature-responsive mode
-        latestTemperature = temperatureC;
-
-        // Print results
-        Serial.print("ADC: ");
-        Serial.print(adcValue);
-        Serial.print("  Voltage: ");
-        Serial.print(voltage, 3);
-        Serial.print("V  Temperature: ");
-        Serial.print(temperatureC, 2);
-        Serial.println("C");
-
-        // Post JSON to Flask server
-        if (WiFi.status() == WL_CONNECTED)
+        if (now - lastPatternStepMs >= speed)
         {
-            Serial.println("WiFi connected. Attempting POST...");
-            HTTPClient http;
-            http.setTimeout(5000); // 5 second timeout
-            http.begin(SERVER_URL);
-            http.addHeader("Content-Type", "application/json");
-
-            String payload = "{";
-            payload += "\"temperature\":" + String(temperatureC, 2);
-            payload += "}";
-
-            Serial.print("POST payload: ");
-            Serial.println(payload);
-
-            int code = http.POST(payload);
-            Serial.print("POST code: ");
-            Serial.println(code);
-            if (code > 0)
+            lastPatternStepMs = now;
+            if (alternateIndex < 5)
             {
-                String resp = http.getString();
-                Serial.println(resp);
+                setLeds(
+                    alternateIndex >= 0,
+                    alternateIndex >= 1,
+                    alternateIndex >= 2,
+                    alternateIndex >= 3,
+                    alternateIndex >= 4);
             }
             else
             {
-                Serial.print("POST failed with error: ");
-                Serial.println(http.errorToString(code));
+                int downIndex = 9 - alternateIndex;
+                setLeds(
+                    downIndex >= 0,
+                    downIndex >= 1,
+                    downIndex >= 2,
+                    downIndex >= 3,
+                    downIndex >= 4);
             }
-            http.end();
+            alternateIndex = (alternateIndex + 1) % 10;
         }
-        else
-        {
-            Serial.println("WiFi disconnected. Reconnecting...");
-            WiFi.reconnect();
-        }
-
-        unsigned long now = millis();
-        if (now - lastPatternPollMs >= patternPollIntervalMs)
-        {
-            lastPatternPollMs = now;
-            pollPattern();
-        }
-
-        updatePattern(now);
-
-        delay(500);
+        return;
     }
+
+    if (currentPatternMode == PATTERN_FLICKER)
+    {
+        if (now - lastPatternStepMs >= speed / 2)
+        {
+            lastPatternStepMs = now;
+            setLeds(
+                random(0, 2),
+                random(0, 2),
+                random(0, 2),
+                random(0, 2),
+                random(0, 2));
+        }
+        return;
+    }
+
+    if (currentPatternMode == PATTERN_TEMPERATURE)
+    {
+        int tempInt = getTemperatureAsBinary(currentTemperature);
+        setLeds(
+            (tempInt >> 0) & 1,
+            (tempInt >> 1) & 1,
+            (tempInt >> 2) & 1,
+            (tempInt >> 3) & 1,
+            (tempInt >> 4) & 1);
+        return;
+    }
+
+    if (currentPatternMode == PATTERN_MANUAL)
+    {
+        setLeds(ledStates[0], ledStates[1], ledStates[2], ledStates[3], ledStates[4]);
+        return;
+    }
+}
+
+void loop()
+{
+    int adcValue = analogRead(sensorPin);
+
+    float voltage = adcValue * referenceVoltage / ADC_MAX;
+
+    float temperatureC = (voltage - 0.5) * 100.0;
+    currentTemperature = temperatureC;
+
+    Serial.print("ADC: ");
+    Serial.print(adcValue);
+    Serial.print("  Voltage: ");
+    Serial.print(voltage, 3);
+    Serial.print("V  Temperature: ");
+    Serial.print(temperatureC, 2);
+    Serial.println("C");
+
+    if (WiFi.status() == WL_CONNECTED)
+    {
+        HTTPClient http;
+        http.begin(SERVER_URL);
+        http.addHeader("Content-Type", "application/json");
+
+        String payload = "{";
+        payload += "\"temperature\":" + String(temperatureC, 2);
+        payload += "}";
+
+        int code = http.POST(payload);
+        Serial.print("POST code: ");
+        Serial.println(code);
+        if (code > 0)
+        {
+            String resp = http.getString();
+            Serial.println(resp);
+        }
+        http.end();
+    }
+    else
+    {
+        Serial.println("WiFi disconnected. Reconnecting...");
+        WiFi.reconnect();
+    }
+
+    unsigned long now = millis();
+    if (now - lastPatternPollMs >= patternPollIntervalMs)
+    {
+        lastPatternPollMs = now;
+        pollPattern();
+    }
+
+    updatePattern(now);
+
+    delay(500);
+}
