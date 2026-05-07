@@ -84,10 +84,16 @@
         font-size: 0.9rem;
         flex: 1;
         min-width: 70px;
+        min-height: 44px;
+        transition: background 0.2s ease;
       }
 
       button:hover {
         background: var(--accent-dark);
+      }
+
+      button:active {
+        transform: scale(0.98);
       }
 
       button.active {
@@ -101,6 +107,8 @@
         cursor: pointer;
         font-weight: 600;
         opacity: 0.4;
+        min-height: 44px;
+        transition: opacity 0.2s ease;
       }
 
       .led-btn:hover {
@@ -131,23 +139,43 @@
       }
 
       @media (max-width: 768px) {
+        .wrap {
+          padding: 0.75rem;
+        }
+
         h1 {
           font-size: 1.5rem;
+          margin-bottom: 0.75rem;
         }
-        .chart-container {
-          height: 200px;
-        }
-      }
 
-      @media (max-width: 480px) {
-        h1 {
-          font-size: 1.25rem;
+        .card {
+          padding: 0.75rem;
+          margin-bottom: 0.75rem;
         }
+
         .grid {
           grid-template-columns: 1fr;
+          gap: 0.75rem;
+          margin-bottom: 0.75rem;
         }
+
+        .buttons {
+          gap: 0.4rem;
+        }
+
+        button {
+          padding: 0.65rem 0.8rem;
+          font-size: 0.85rem;
+          min-width: 60px;
+        }
+
+        .manual-controls {
+          grid-template-columns: repeat(5, 1fr);
+          gap: 0.6rem;
+        }
+
         .chart-container {
-          height: 180px;
+          height: 200px;
         }
       }
     </style>
