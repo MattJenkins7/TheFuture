@@ -4,8 +4,8 @@
 #include <ArduinoJson.h>
 
 // Wi-Fi credentials
-const char *WIFI_SSID = "AndroidAP33D3"; //Change to your WiFi SSID
-const char *WIFI_PASS = "password"; //Change to your WiFi password
+const char *WIFI_SSID = "AndroidAP33D3"; // Change to your WiFi SSID
+const char *WIFI_PASS = "password";      // Change to your WiFi password
 
 // Flask server endpoints
 const char *SENSOR_DATA_ENDPOINT = "http://10.99.191.156:5000/api/sensor-data";
@@ -281,11 +281,10 @@ void loop()
             http.begin(SENSOR_DATA_ENDPOINT);
             http.addHeader("Content-Type", "application/json");
 
-            String payload = "{";
-            payload += "\"temperature\":" + String(temperatureC, 2);
-            payload += "}";
+            uint8_t payload[80];
+            snprintf((char *)payload, sizeof(payload), "{\"temperature\":%.2f}", temperatureC);
 
-            int httpStatus = http.POST(payload);
+            int httpStatus = http.POST((char *)payload);
             Serial.print("POST status: ");
             Serial.println(httpStatus);
             if (httpStatus > 0)
