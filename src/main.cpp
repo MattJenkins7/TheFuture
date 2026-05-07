@@ -281,7 +281,7 @@ void loop()
             http.begin(SENSOR_DATA_ENDPOINT);
             http.addHeader("Content-Type", "application/json");
 
-            uint8_t payload[80];
+            uint8_t payload[32];
             snprintf((char *)payload, sizeof(payload), "{\"temperature\":%.2f}", temperatureC);
 
             int httpStatus = http.POST((char *)payload);
