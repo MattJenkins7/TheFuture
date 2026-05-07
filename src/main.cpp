@@ -4,8 +4,8 @@
 #include <ArduinoJson.h>
 
 // Wi-Fi credentials
-const char *WIFI_SSID = "AndroidAP33D3";
-const char *WIFI_PASS = "password";
+const char *WIFI_SSID = "AndroidAP33D3"; //Change to your WiFi SSID
+const char *WIFI_PASS = "password"; //Change to your WiFi password
 
 // Flask server endpoints
 const char *SENSOR_DATA_ENDPOINT = "http://10.99.191.156:5000/api/sensor-data";
@@ -39,9 +39,9 @@ const unsigned long statusCheckInterval = 300; // ms between pattern polling
 unsigned long lastSensorSendTime = 0;
 const unsigned long sensorSendInterval = 3000; // ms between sensor data sends
 unsigned long lastAnimationTime = 0;
-int wavePosition = 0; // current position in wave/chase pattern
-bool isBlinkOn = false; // tracks blink on/off state
-int glowIndex = 0; // position in glow/alternate animation
+int wavePosition = 0;             // current position in wave/chase pattern
+bool isBlinkOn = false;           // tracks blink on/off state
+int animationStep = 0;            // position in glow/alternate animation
 const unsigned long speed = 1000; // ms between animation steps
 
 const int TEMP_SENSOR_PIN = 5;
@@ -51,6 +51,19 @@ const float referenceVoltage = 3.3;
 
 // Current temperature reading in Celsius
 float currentTemperature = 0.0;
+
+static void wifiConnection()
+{
+    Serial.print("Connecting to WiFi");
+    while (WiFi.status() != WL_CONNECTED)
+    {
+        delay(300);
+        Serial.print(".");
+    }
+    Serial.println();
+    Serial.print("WiFi reconnected. IP: ");
+    Serial.println(WiFi.localIP());
+}
 
 void setup()
 {
@@ -70,15 +83,7 @@ void setup()
 
     WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASS);
-    Serial.print("Connecting to WiFi");
-    while (WiFi.status() != WL_CONNECTED)
-    {
-        delay(300);
-        Serial.print(".");
-    }
-    Serial.println();
-    Serial.print("WiFi connected. IP: ");
-    Serial.println(WiFi.localIP());
+    wifiConnection();
 
     randomSeed(analogRead(TEMP_SENSOR_PIN));
 }
@@ -116,7 +121,7 @@ static void applyPattern(const String &pattern)
     lastAnimationTime = 0;
     wavePosition = 0;
     isBlinkOn = false;
-    glowIndex = 0;
+    animationStep = 0;
 
     if (currentPatternMode != PATTERN_MANUAL)
     {
@@ -169,13 +174,11 @@ static void pollPattern()
 
 static void updatePattern(unsigned long currentTime)
 {
-    // Pattern off - do nothing
     if (currentPatternMode == PATTERN_OFF)
     {
         return;
     }
 
-    // Pattern Blink - toggle all LEDs on/off
     if (currentPatternMode == PATTERN_BLINK)
     {
         if (currentTime - lastAnimationTime >= speed / 2)
@@ -187,7 +190,6 @@ static void updatePattern(unsigned long currentTime)
         return;
     }
 
-    // Pattern Chase - light up one LED at a time in a chase pattern
     if (currentPatternMode == PATTERN_CHASE)
     {
         if (currentTime - lastAnimationTime >= speed / 5)
@@ -202,23 +204,21 @@ static void updatePattern(unsigned long currentTime)
         return;
     }
 
-    // Pattern Wave - Light up LEDs in a wave pattern
     if (currentPatternMode == PATTERN_WAVE)
     {
         if (currentTime - lastAnimationTime >= speed / 10)
         {
             lastAnimationTime = currentTime;
-            int activeLeds = (glowIndex < 5) ? glowIndex : (9 - glowIndex);
+            int activeLeds = (animationStep <= 5) ? animationStep : (10 - animationStep);
             for (int i = 0; i < 5; i++)
             {
                 digitalWrite(LED_PINS[i], (i < activeLeds) ? HIGH : LOW);
             }
-            glowIndex = (glowIndex + 1) % 10;
+            animationStep = (animationStep + 1) % 10;
         }
         return;
     }
 
-    // Pattern Flicker - Randomly flicker LEDs on and off
     if (currentPatternMode == PATTERN_FLICKER)
     {
         if (currentTime - lastAnimationTime >= speed / 50)
@@ -232,7 +232,6 @@ static void updatePattern(unsigned long currentTime)
         return;
     }
 
-    // Pattern Temperature Responsive - Display temperature as binary on LEDs
     if (currentPatternMode == PATTERN_TEMPERATURE)
     {
         int tempBits = getTemperatureAsBinary(currentTemperature);
@@ -243,7 +242,6 @@ static void updatePattern(unsigned long currentTime)
         return;
     }
 
-    // Pattern Manual - Set LEDs based on received states
     if (currentPatternMode == PATTERN_MANUAL)
     {
         for (int i = 0; i < 5; i++)
@@ -301,6 +299,7 @@ void loop()
         {
             Serial.println("WiFi disconnected. Reconnecting...");
             WiFi.reconnect();
+            wifiConnection();
         }
     }
 

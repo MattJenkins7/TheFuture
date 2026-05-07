@@ -1,21 +1,37 @@
-"Your real friends are easy to identify. 
- They don't ask for your wi-fi, they already have it,
- because trust isn't saying "Hey, what's the password?",
- trust is, your phone connecting automatically, and, if
- they still ask for your password, that's not a friend,
- that's a guest. *Laugh track*" - Miami Tony Stark
+## Overview
 
-# ESP32 + Flask Live Dashboard
+This project implements an ESP32-based IoT system that reads temperature data via a TMP36 sensor and controls 5 LEDs with various animated patterns. The system communicates with a Python Flask server for pattern control and sensor data logging.
 
-This setup gives you:
+**Features:**
 
-- Flask server endpoint for ESP32 sensor uploads
-- In-memory latest readings storage
-- Current LED pattern storage
-- Web dashboard with live AJAX updates (no refresh)
-- Pattern controls from web UI
+- Real-time temperature sensing (TMP36 sensor)
+- 5 LED control with multiple animation patterns
+- Web-based dashboard for pattern selection and manual LED control
+- Live temperature graph visualization
+- WiFi connectivity with automatic reconnection
+- Temperature-responsive LED patterns
+- Manual LED control via web interface
 
-## 1) Install and run Flask server
+## Hardware
+
+- **Microcontroller:** ESP32
+- **Sensor:** TMP36 Temperature Sensor (GPIO 5)
+- **LEDs:** 5 individual LEDs on pins 6, 9, 10, 11, 12
+- **WiFi:** Built-in ESP32 WiFi
+
+## Available LED Patterns
+
+- **OFF** - All LEDs off
+- **BLINK** - All LEDs toggle on/off together
+- **CHASE** - Single LED moves across the array sequentially
+- **WAVE** - LEDs pulse on gradually (0→5→0)
+- **FLICKER** - Random rapid on/off flicker effect
+- **TEMPERATURE_RESPONSIVE** - LEDs display temperature as binary representation
+- **MANUAL** - Control individual LED states from web interface
+
+## Installation and Setup
+
+### 1) Install and run Flask server
 
 From this folder in PowerShell:
 
@@ -27,84 +43,82 @@ python app.py
 
 Open: http://127.0.0.1:5000
 
-## 2) ESP32 -> Flask payload format
+### 2) ESP32 Configuration
 
-Send POST requests to:
+Update the WiFi credentials and server IP in `src/main.cpp`:
 
-`http://<PC_IP>:5000/api/sensor-data`
+```cpp
+const char *WIFI_SSID = "YOUR_WIFI_SSID";
+const char *WIFI_PASS = "YOUR_WIFI_PASSWORD";
+const char *SENSOR_DATA_ENDPOINT = "http://YOUR_PC_IP:5000/api/sensor-data";
+const char *LED_PATTERN_ENDPOINT = "http://YOUR_PC_IP:5000/api/status";
+```
 
-JSON body example:
+### 3) Build and Upload
+
+Using PlatformIO:
+
+```bash
+platformio run --target upload --upload-port COM3
+```
+
+## API Endpoints
+
+### POST /api/sensor-data
+
+ESP32 sends temperature data every 3 seconds:
 
 ```json
 {
-  "temperature": 24.6,
-  "humidity": 57.2,
-  "light": 312,
-  "pattern": "BLINK"
+  "temperature": 18.6
 }
 ```
 
-Use your computer's local IP for `<PC_IP>` (for example `192.168.1.20`) and ensure ESP32 is on the same Wi-Fi network.
+### GET /api/status
 
-## 3) Example ESP32 code snippet (Arduino/PlatformIO)
+Returns current pattern and LED states:
 
-```cpp
-#include <WiFi.h>
-#include <HTTPClient.h>
-
-const char* ssid = "YOUR_WIFI";
-const char* password = "YOUR_PASSWORD";
-const char* serverUrl = "http://192.168.1.20:5000/api/sensor-data";
-
-void setup() {
-  Serial.begin(115200);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("WiFi connected");
-}
-
-void loop() {
-  if (WiFi.status() == WL_CONNECTED) {
-    float temperature = 24.6;
-    float humidity = 57.2;
-    int light = 312;
-    String pattern = "BLINK";
-
-    HTTPClient http;
-    http.begin(serverUrl);
-    http.addHeader("Content-Type", "application/json");
-
-    String json = "{";
-    json += "\"temperature\":" + String(temperature, 1) + ",";
-    json += "\"humidity\":" + String(humidity, 1) + ",";
-    json += "\"light\":" + String(light) + ",";
-    json += "\"pattern\":\"" + pattern + "\"";
-    json += "}";
-
-    int httpCode = http.POST(json);
-    String response = http.getString();
-
-    Serial.printf("POST code: %d\n", httpCode);
-    Serial.println(response);
-
-    http.end();
-  }
-
-  delay(2000);
+```json
+{
+  "temperature": 18.6,
+  "pattern": "WAVE",
+  "led_states": [false, true, false, true, false],
+  "updated_at": "2026-05-07T12:00:00"
 }
 ```
 
-## 4) Changing LED pattern from web page
+### POST /api/pattern
 
-The dashboard buttons call:
+Set LED pattern from web interface:
 
-- `POST /api/pattern` with body `{ "pattern": "WAVE" }`
+```json
+{
+  "pattern": "CHASE"
+}
+```
 
-To make ESP32 follow this selected pattern, have ESP32 poll:
+Valid patterns: OFF, BLINK, CHASE, WAVE, FLICKER, TEMPERATURE_RESPONSIVE, MANUAL
 
-- `GET /api/status`
+### POST /api/manual-led
 
-Then read `pattern` from the JSON response and update your LED logic.
+Control individual LED states:
+
+```json
+{
+  "states": [true, false, true, false, false]
+}
+```
+
+### GET /api/temperature-history
+
+Retrieve last 60 temperature readings with timestamps
+
+## Web Interface
+
+Access the dashboard at `http://YOUR_PC_IP:5000`:
+
+- **Temperature Display** - Shows live temperature reading
+- **Pattern Buttons** - Select LED animation patterns
+- **Manual LED Control** - Toggle individual LEDs when MANUAL pattern is selected
+- **Temperature Mode** - Activate temperature-responsive LED display
+- **Temperature Graph** - Real-time chart of temperature history
