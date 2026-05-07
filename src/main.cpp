@@ -8,8 +8,8 @@ const char *WIFI_SSID = "AndroidAP33D3";
 const char *WIFI_PASS = "password";
 
 // Flask server endpoints
-const char *SENSOR_DATA_ENDPOINT = "http://10.82.46.156:5000/api/sensor-data";
-const char *LED_PATTERN_ENDPOINT = "http://10.82.46.156:5000/api/status";
+const char *SENSOR_DATA_ENDPOINT = "http://10.99.191.156:5000/api/sensor-data";
+const char *LED_PATTERN_ENDPOINT = "http://10.99.191.156:5000/api/status";
 
 // LED pins
 const int LED_1 = 6;
@@ -36,11 +36,13 @@ String currentPattern = "OFF";
 bool ledStates[5] = {false, false, false, false, false};
 unsigned long lastStatusCheckTime = 0;
 const unsigned long statusCheckInterval = 300; // ms between pattern polling
+unsigned long lastSensorSendTime = 0;
+const unsigned long sensorSendInterval = 3000; // ms between sensor data sends
 unsigned long lastAnimationTime = 0;
-int wavePosition = 0;            // current position in wave/chase pattern
-bool isBlinkOn = false;          // tracks blink on/off state
-int glowIndex = 0;               // position in glow/alternate animation
-const unsigned long speed = 500; // ms between animation steps
+int wavePosition = 0; // current position in wave/chase pattern
+bool isBlinkOn = false; // tracks blink on/off state
+int glowIndex = 0; // position in glow/alternate animation
+const unsigned long speed = 1000; // ms between animation steps
 
 const int TEMP_SENSOR_PIN = 5;
 
@@ -142,7 +144,7 @@ static void pollPattern()
     int httpStatus = http.GET();
     if (httpStatus == 200)
     {
-        StaticJsonDocument<1024> jsonResponse;
+        JsonDocument jsonResponse;
         DeserializationError parseError = deserializeJson(jsonResponse, http.getStream());
         const char *pattern = jsonResponse["pattern"] | "OFF";
         if (currentPattern != pattern)
@@ -150,7 +152,7 @@ static void pollPattern()
             applyPattern(pattern);
         }
 
-        if (currentPattern == "MANUAL" && jsonResponse.containsKey("led_states"))
+        if (currentPattern == "MANUAL" && jsonResponse["led_states"].is<JsonArray>())
         {
             JsonArray states = jsonResponse["led_states"];
             if (states.size() == 5)
@@ -176,7 +178,7 @@ static void updatePattern(unsigned long currentTime)
     // Pattern Blink - toggle all LEDs on/off
     if (currentPatternMode == PATTERN_BLINK)
     {
-        if (currentTime - lastAnimationTime >= speed)
+        if (currentTime - lastAnimationTime >= speed / 2)
         {
             lastAnimationTime = currentTime;
             isBlinkOn = !isBlinkOn;
@@ -188,14 +190,14 @@ static void updatePattern(unsigned long currentTime)
     // Pattern Chase - light up one LED at a time in a chase pattern
     if (currentPatternMode == PATTERN_CHASE)
     {
-        if (currentTime - lastAnimationTime >= speed)
+        if (currentTime - lastAnimationTime >= speed / 5)
         {
             lastAnimationTime = currentTime;
-            for (int i = 0; i < 5; i++)
-            {
-                digitalWrite(LED_PINS[i], (i == wavePosition) ? HIGH : LOW);
-            }
             wavePosition = (wavePosition + 1) % 5;
+        }
+        for (int i = 0; i < 5; i++)
+        {
+            digitalWrite(LED_PINS[i], (i == wavePosition) ? HIGH : LOW);
         }
         return;
     }
@@ -203,7 +205,7 @@ static void updatePattern(unsigned long currentTime)
     // Pattern Wave - Light up LEDs in a wave pattern
     if (currentPatternMode == PATTERN_WAVE)
     {
-        if (currentTime - lastAnimationTime >= speed)
+        if (currentTime - lastAnimationTime >= speed / 10)
         {
             lastAnimationTime = currentTime;
             int activeLeds = (glowIndex < 5) ? glowIndex : (9 - glowIndex);
@@ -216,9 +218,10 @@ static void updatePattern(unsigned long currentTime)
         return;
     }
 
+    // Pattern Flicker - Randomly flicker LEDs on and off
     if (currentPatternMode == PATTERN_FLICKER)
     {
-        if (currentTime - lastAnimationTime >= speed / 2)
+        if (currentTime - lastAnimationTime >= speed / 50)
         {
             lastAnimationTime = currentTime;
             for (int i = 0; i < 5; i++)
@@ -229,6 +232,7 @@ static void updatePattern(unsigned long currentTime)
         return;
     }
 
+    // Pattern Temperature Responsive - Display temperature as binary on LEDs
     if (currentPatternMode == PATTERN_TEMPERATURE)
     {
         int tempBits = getTemperatureAsBinary(currentTemperature);
@@ -239,6 +243,7 @@ static void updatePattern(unsigned long currentTime)
         return;
     }
 
+    // Pattern Manual - Set LEDs based on received states
     if (currentPatternMode == PATTERN_MANUAL)
     {
         for (int i = 0; i < 5; i++)
@@ -251,6 +256,8 @@ static void updatePattern(unsigned long currentTime)
 
 void loop()
 {
+    unsigned long currentTime = millis();
+
     int adcValue = analogRead(TEMP_SENSOR_PIN);
 
     float voltage = adcValue * referenceVoltage / ADC_MAX;
@@ -258,41 +265,45 @@ void loop()
     float temperatureC = (voltage - 0.5) * 100.0;
     currentTemperature = temperatureC;
 
-    Serial.print("ADC: ");
-    Serial.print(adcValue);
-    Serial.print("  Voltage: ");
-    Serial.print(voltage, 3);
-    Serial.print("V  Temperature: ");
-    Serial.print(temperatureC, 2);
-    Serial.println("C");
-
-    if (WiFi.status() == WL_CONNECTED)
+    if (currentTime - lastSensorSendTime >= sensorSendInterval)
     {
-        HTTPClient http;
-        http.begin(SENSOR_DATA_ENDPOINT);
-        http.addHeader("Content-Type", "application/json");
+        lastSensorSendTime = currentTime;
 
-        String payload = "{";
-        payload += "\"temperature\":" + String(temperatureC, 2);
-        payload += "}";
+        Serial.print("ADC: ");
+        Serial.print(adcValue);
+        Serial.print("  Voltage: ");
+        Serial.print(voltage, 3);
+        Serial.print("V  Temperature: ");
+        Serial.print(temperatureC, 2);
+        Serial.println("C");
 
-        int httpStatus = http.POST(payload);
-        Serial.print("POST status: ");
-        Serial.println(httpStatus);
-        if (httpStatus > 0)
+        if (WiFi.status() == WL_CONNECTED)
         {
-            String resp = http.getString();
-            Serial.println(resp);
+            HTTPClient http;
+            http.begin(SENSOR_DATA_ENDPOINT);
+            http.addHeader("Content-Type", "application/json");
+
+            String payload = "{";
+            payload += "\"temperature\":" + String(temperatureC, 2);
+            payload += "}";
+
+            int httpStatus = http.POST(payload);
+            Serial.print("POST status: ");
+            Serial.println(httpStatus);
+            if (httpStatus > 0)
+            {
+                String resp = http.getString();
+                Serial.println(resp);
+            }
+            http.end();
         }
-        http.end();
-    }
-    else
-    {
-        Serial.println("WiFi disconnected. Reconnecting...");
-        WiFi.reconnect();
+        else
+        {
+            Serial.println("WiFi disconnected. Reconnecting...");
+            WiFi.reconnect();
+        }
     }
 
-    unsigned long currentTime = millis();
     if (currentTime - lastStatusCheckTime >= statusCheckInterval)
     {
         lastStatusCheckTime = currentTime;
@@ -301,5 +312,5 @@ void loop()
 
     updatePattern(currentTime);
 
-    delay(3000);
+    delay(50);
 }
