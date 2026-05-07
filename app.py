@@ -6,7 +6,7 @@ from collections import deque
 app = Flask(__name__)
 state_lock = Lock()
 
-VALID_PATTERNS = ["OFF", "BLINK", "WAVE", "RAINBOW", "FLICKER", "TEMPERATURE_RESPONSIVE", "MANUAL"]
+VALID_PATTERNS = ["OFF", "BLINK", "CHASE", "WAVE", "FLICKER", "TEMPERATURE_RESPONSIVE", "MANUAL"]
 
 latest_state = {
     "temperature": None,

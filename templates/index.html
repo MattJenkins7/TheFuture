@@ -89,8 +89,25 @@
       button:hover {
         background: var(--accent-dark);
       }
+
       button.active {
         background: var(--ok);
+      }
+
+      .led-btn {
+        aspect-ratio: 1;
+        border: none;
+        border-radius: 50%;
+        cursor: pointer;
+        font-weight: 600;
+        opacity: 0.4;
+      }
+
+      .led-btn:hover {
+        opacity: 0.6;
+      }
+      .led-btn.on {
+        opacity: 1;
       }
 
       .status {
@@ -113,26 +130,7 @@
         margin-top: 0.75rem;
       }
 
-      .led-btn {
-        aspect-ratio: 1;
-        border: none;
-        border-radius: 50%;
-        cursor: pointer;
-        font-weight: 600;
-        opacity: 0.4;
-      }
-
-      .led-btn:hover {
-        opacity: 0.6;
-      }
-      .led-btn.on {
-        opacity: 1;
-      }
-
       @media (max-width: 768px) {
-        .grid {
-          gap: 0.75rem;
-        }
         h1 {
           font-size: 1.5rem;
         }
@@ -157,7 +155,6 @@
   <body>
     <main class="wrap">
       <h1>ESP32 Live Dashboard</h1>
-
       <section class="grid">
         <article class="card">
           <div class="label">Temperature</div>
@@ -168,19 +165,17 @@
           <div class="value" id="pattern">OFF</div>
         </article>
       </section>
-
       <section class="card">
         <div class="label">Change LED Pattern</div>
         <div class="buttons">
           <button data-pattern="OFF">OFF</button>
           <button data-pattern="BLINK">BLINK</button>
+          <button data-pattern="CHASE">CHASE</button>
           <button data-pattern="WAVE">WAVE</button>
-          <button data-pattern="RAINBOW">RAINBOW</button>
           <button data-pattern="FLICKER">FLICKER</button>
         </div>
         <div class="status" id="status"></div>
       </section>
-
       <section class="card">
         <div class="label">Temperature Responsive Mode</div>
         <div class="buttons">
@@ -190,7 +185,6 @@
         </div>
         <div class="status" id="tempStatus"></div>
       </section>
-
       <section class="card">
         <div class="label">Manual LED Control</div>
         <div class="manual-controls">
@@ -237,7 +231,6 @@
         </div>
         <div class="status" id="manualStatus"></div>
       </section>
-
       <section class="card">
         <div class="label">Temperature Over Time</div>
         <div class="chart-container">
@@ -257,6 +250,19 @@
 
       let temperatureChart = null;
       let ledStates = [true, false, false, false, false];
+
+      const apiCall = async (endpoint, method = "GET", body = null) => {
+        const res = await fetch(endpoint, {
+          method,
+          headers: { "Content-Type": "application/json" },
+          ...(body && { body: JSON.stringify(body) }),
+        });
+        return res.json();
+      };
+
+      const showStatus = (el, msg) => {
+        el.textContent = msg;
+      };
 
       function initChart() {
         const ctx = document
@@ -295,8 +301,7 @@
 
       async function updateTemperatureChart() {
         try {
-          const res = await fetch("/api/temperature-history");
-          const data = await res.json();
+          const data = await apiCall("/api/temperature-history");
           const history = data.history || [];
 
           if (temperatureChart && history.length > 0) {
@@ -319,109 +324,79 @@
 
       async function refreshStatus() {
         try {
-          const res = await fetch("/api/status");
-          const data = await res.json();
-
+          const data = await apiCall("/api/status");
           temperatureEl.textContent =
             data.temperature !== null
               ? `${data.temperature.toFixed(1)} °C`
               : "-- °C";
-
           patternEl.textContent = data.pattern || "OFF";
-
-          // Update temp responsive button state
-          if (data.pattern === "TEMPERATURE_RESPONSIVE") {
-            tempResponsiveBtn.classList.add("active");
-          } else {
-            tempResponsiveBtn.classList.remove("active");
-          }
-
-          // Update LED states if available
+          tempResponsiveBtn.classList.toggle(
+            "active",
+            data.pattern === "TEMPERATURE_RESPONSIVE",
+          );
           if (data.led_states) {
             ledStates = data.led_states;
             updateLEDButtons();
           }
         } catch (err) {
-          statusEl.textContent = "Failed to fetch live data";
+          showStatus(statusEl, "Failed to fetch live data");
         }
       }
-
       async function setPattern(pattern) {
         try {
-          const res = await fetch("/api/pattern", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ pattern }),
-          });
-
-          const data = await res.json();
+          const data = await apiCall("/api/pattern", "POST", { pattern });
           if (!data.ok) {
-            statusEl.textContent = data.error || "Pattern update failed";
+            showStatus(statusEl, data.error || "Pattern update failed");
             return;
           }
-
-          statusEl.textContent = `Pattern set to ${data.pattern}`;
+          showStatus(statusEl, `Pattern set to ${data.pattern}`);
           await refreshStatus();
         } catch (err) {
-          statusEl.textContent = "Pattern update failed";
+          showStatus(statusEl, "Pattern update failed");
         }
       }
 
       async function setTemperatureResponsive(enabled) {
         try {
-          const res = await fetch("/api/temperature-responsive", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ enabled }),
+          const data = await apiCall("/api/temperature-responsive", "POST", {
+            enabled,
           });
-
-          const data = await res.json();
           if (!data.ok) {
-            tempStatus.textContent = "Failed to update mode";
+            showStatus(tempStatus, "Failed to update mode");
             return;
           }
-
-          tempStatus.textContent = enabled
-            ? "Temperature mode enabled"
-            : "Temperature mode disabled";
+          showStatus(
+            tempStatus,
+            enabled ? "Temperature mode enabled" : "Temperature mode disabled",
+          );
           await refreshStatus();
         } catch (err) {
-          tempStatus.textContent = "Mode update failed";
+          showStatus(tempStatus, "Mode update failed");
         }
       }
 
       async function toggleLED(index) {
         ledStates[index] = !ledStates[index];
         try {
-          const res = await fetch("/api/manual-led", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ states: ledStates }),
+          const data = await apiCall("/api/manual-led", "POST", {
+            states: ledStates,
           });
-
-          const data = await res.json();
           if (!data.ok) {
             ledStates[index] = !ledStates[index];
-            manualStatus.textContent = data.error || "LED update failed";
+            showStatus(manualStatus, data.error || "LED update failed");
             return;
           }
-
           updateLEDButtons();
-          manualStatus.textContent = "LED updated";
+          showStatus(manualStatus, "LED updated");
         } catch (err) {
           ledStates[index] = !ledStates[index];
-          manualStatus.textContent = "LED update failed";
+          showStatus(manualStatus, "LED update failed");
         }
       }
 
       function updateLEDButtons() {
         document.querySelectorAll(".led-btn").forEach((btn) => {
-          const index = parseInt(btn.dataset.index);
-          if (ledStates[index]) {
-            btn.classList.add("on");
-          } else {
-            btn.classList.remove("on");
-          }
+          btn.classList.toggle("on", ledStates[parseInt(btn.dataset.index)]);
         });
       }
 
@@ -439,11 +414,11 @@
           ),
         );
 
-      tempResponsiveBtn.addEventListener("click", () => {
-        const isCurrentlyEnabled =
-          tempResponsiveBtn.classList.contains("active");
-        setTemperatureResponsive(!isCurrentlyEnabled);
-      });
+      tempResponsiveBtn.addEventListener("click", () =>
+        setTemperatureResponsive(
+          !tempResponsiveBtn.classList.contains("active"),
+        ),
+      );
 
       initChart();
       updateLEDButtons();

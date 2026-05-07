@@ -7,9 +7,9 @@
 const char *WIFI_SSID = "AndroidAP33D3";
 const char *WIFI_PASS = "password";
 
-// Flask server
-const char *SERVER_URL = "http://10.82.46.156:5000/api/sensor-data";
-const char *STATUS_URL = "http://10.82.46.156:5000/api/status";
+// Flask server endpoints
+const char *SENSOR_DATA_ENDPOINT = "http://10.82.46.156:5000/api/sensor-data";
+const char *LED_PATTERN_ENDPOINT = "http://10.82.46.156:5000/api/status";
 
 // LED pins
 const int LED_1 = 6;
@@ -25,7 +25,7 @@ enum PatternMode
     PATTERN_OFF,
     PATTERN_BLINK,
     PATTERN_CHASE,
-    PATTERN_ALTERNATE,
+    PATTERN_WAVE,
     PATTERN_FLICKER,
     PATTERN_TEMPERATURE,
     PATTERN_MANUAL
@@ -34,20 +34,20 @@ enum PatternMode
 PatternMode currentPatternMode = PATTERN_OFF;
 String currentPattern = "OFF";
 bool ledStates[5] = {false, false, false, false, false};
-unsigned long lastPatternPollMs = 0;
-const unsigned long patternPollIntervalMs = 300;
-unsigned long lastPatternStepMs = 0;
-int chaseStep = 0;
-bool blinkOn = false;
-int alternateIndex = 0;
-const unsigned long speed = 500;
+unsigned long lastStatusCheckTime = 0;
+const unsigned long statusCheckInterval = 300; // ms between pattern polling
+unsigned long lastAnimationTime = 0;
+int wavePosition = 0;            // current position in wave/chase pattern
+bool isBlinkOn = false;          // tracks blink on/off state
+int glowIndex = 0;               // position in glow/alternate animation
+const unsigned long speed = 500; // ms between animation steps
 
-const int sensorPin = 5;
+const int TEMP_SENSOR_PIN = 5;
 
 const float referenceVoltage = 3.3;
 #define ADC_MAX 4095.0
 
-// Temperature storage
+// Current temperature reading in Celsius
 float currentTemperature = 0.0;
 
 void setup()
@@ -55,10 +55,10 @@ void setup()
     Serial.begin(115200);
     delay(500);
 
-    Serial.println("\n=== TMP36 Temperature Sensor Test ===");
+    Serial.println("\n=== TMP36 Temperature Sensor ===");
 
     analogReadResolution(12);
-    analogSetPinAttenuation(sensorPin, ADC_11db);
+    analogSetPinAttenuation(TEMP_SENSOR_PIN, ADC_11db);
 
     for (int i = 0; i < 5; i++)
     {
@@ -78,26 +78,26 @@ void setup()
     Serial.print("WiFi connected. IP: ");
     Serial.println(WiFi.localIP());
 
-    randomSeed(analogRead(sensorPin));
+    randomSeed(analogRead(TEMP_SENSOR_PIN));
 }
 
-static void setLeds(bool led1On, bool led2On, bool led3On, bool led4On, bool led5On)
+static void setLeds(bool led1, bool led2, bool led3, bool led4, bool led5)
 {
-    digitalWrite(LED_PINS[0], led1On ? HIGH : LOW);
-    digitalWrite(LED_PINS[1], led2On ? HIGH : LOW);
-    digitalWrite(LED_PINS[2], led3On ? HIGH : LOW);
-    digitalWrite(LED_PINS[3], led4On ? HIGH : LOW);
-    digitalWrite(LED_PINS[4], led5On ? HIGH : LOW);
+    digitalWrite(LED_PINS[0], led1 ? HIGH : LOW);
+    digitalWrite(LED_PINS[1], led2 ? HIGH : LOW);
+    digitalWrite(LED_PINS[2], led3 ? HIGH : LOW);
+    digitalWrite(LED_PINS[3], led4 ? HIGH : LOW);
+    digitalWrite(LED_PINS[4], led5 ? HIGH : LOW);
 }
 
 static PatternMode parsePattern(const String &pattern)
 {
     if (pattern == "BLINK")
         return PATTERN_BLINK;
-    if (pattern == "WAVE")
+    if (pattern == "CHASE")
         return PATTERN_CHASE;
-    if (pattern == "RAINBOW")
-        return PATTERN_ALTERNATE;
+    if (pattern == "WAVE")
+        return PATTERN_WAVE;
     if (pattern == "FLICKER")
         return PATTERN_FLICKER;
     if (pattern == "TEMPERATURE_RESPONSIVE")
@@ -111,10 +111,10 @@ static void applyPattern(const String &pattern)
 {
     currentPattern = pattern;
     currentPatternMode = parsePattern(pattern);
-    lastPatternStepMs = 0;
-    chaseStep = 0;
-    blinkOn = false;
-    alternateIndex = 0;
+    lastAnimationTime = 0;
+    wavePosition = 0;
+    isBlinkOn = false;
+    glowIndex = 0;
 
     if (currentPatternMode != PATTERN_MANUAL)
     {
@@ -138,29 +138,26 @@ static void pollPattern()
         return;
 
     HTTPClient http;
-    http.begin(STATUS_URL);
-    int code = http.GET();
-    if (code == 200)
+    http.begin(LED_PATTERN_ENDPOINT);
+    int httpStatus = http.GET();
+    if (httpStatus == 200)
     {
-        StaticJsonDocument<1024> doc;
-        DeserializationError err = deserializeJson(doc, http.getStream());
-        if (!err)
+        StaticJsonDocument<1024> jsonResponse;
+        DeserializationError parseError = deserializeJson(jsonResponse, http.getStream());
+        const char *pattern = jsonResponse["pattern"] | "OFF";
+        if (currentPattern != pattern)
         {
-            const char *pattern = doc["pattern"] | "OFF";
-            if (currentPattern != pattern)
-            {
-                applyPattern(pattern);
-            }
+            applyPattern(pattern);
+        }
 
-            if (currentPattern == "MANUAL" && doc.containsKey("led_states"))
+        if (currentPattern == "MANUAL" && jsonResponse.containsKey("led_states"))
+        {
+            JsonArray states = jsonResponse["led_states"];
+            if (states.size() == 5)
             {
-                JsonArray states = doc["led_states"];
-                if (states.size() == 5)
+                for (int i = 0; i < 5; i++)
                 {
-                    for (int i = 0; i < 5; i++)
-                    {
-                        ledStates[i] = states[i].as<bool>();
-                    }
+                    ledStates[i] = states[i].as<bool>();
                 }
             }
         }
@@ -168,120 +165,93 @@ static void pollPattern()
     http.end();
 }
 
-static void updatePattern(unsigned long now)
+static void updatePattern(unsigned long currentTime)
 {
+    // Pattern off - do nothing
     if (currentPatternMode == PATTERN_OFF)
     {
         return;
     }
 
+    // Pattern Blink - toggle all LEDs on/off
     if (currentPatternMode == PATTERN_BLINK)
     {
-        if (now - lastPatternStepMs >= speed)
+        if (currentTime - lastAnimationTime >= speed)
         {
-            lastPatternStepMs = now;
-            blinkOn = !blinkOn;
-            setLeds(blinkOn, blinkOn, blinkOn, blinkOn, blinkOn);
+            lastAnimationTime = currentTime;
+            isBlinkOn = !isBlinkOn;
+            setLeds(isBlinkOn, isBlinkOn, isBlinkOn, isBlinkOn, isBlinkOn);
         }
         return;
     }
 
+    // Pattern Chase - light up one LED at a time in a chase pattern
     if (currentPatternMode == PATTERN_CHASE)
     {
-        if (now - lastPatternStepMs >= speed)
+        if (currentTime - lastAnimationTime >= speed)
         {
-            lastPatternStepMs = now;
-            if (chaseStep == 0)
+            lastAnimationTime = currentTime;
+            for (int i = 0; i < 5; i++)
             {
-                setLeds(true, false, false, false, false);
+                digitalWrite(LED_PINS[i], (i == wavePosition) ? HIGH : LOW);
             }
-            else if (chaseStep == 1)
-            {
-                setLeds(false, true, false, false, false);
-            }
-            else if (chaseStep == 2)
-            {
-                setLeds(false, false, true, false, false);
-            }
-            else if (chaseStep == 3)
-            {
-                setLeds(false, false, false, true, false);
-            }
-            else
-            {
-                setLeds(false, false, false, false, true);
-            }
-            chaseStep = (chaseStep + 1) % 5;
+            wavePosition = (wavePosition + 1) % 5;
         }
         return;
     }
 
-    if (currentPatternMode == PATTERN_ALTERNATE)
+    // Pattern Wave - Light up LEDs in a wave pattern
+    if (currentPatternMode == PATTERN_WAVE)
     {
-        if (now - lastPatternStepMs >= speed)
+        if (currentTime - lastAnimationTime >= speed)
         {
-            lastPatternStepMs = now;
-            if (alternateIndex < 5)
+            lastAnimationTime = currentTime;
+            int activeLeds = (glowIndex < 5) ? glowIndex : (9 - glowIndex);
+            for (int i = 0; i < 5; i++)
             {
-                setLeds(
-                    alternateIndex >= 0,
-                    alternateIndex >= 1,
-                    alternateIndex >= 2,
-                    alternateIndex >= 3,
-                    alternateIndex >= 4);
+                digitalWrite(LED_PINS[i], (i < activeLeds) ? HIGH : LOW);
             }
-            else
-            {
-                int downIndex = 9 - alternateIndex;
-                setLeds(
-                    downIndex >= 0,
-                    downIndex >= 1,
-                    downIndex >= 2,
-                    downIndex >= 3,
-                    downIndex >= 4);
-            }
-            alternateIndex = (alternateIndex + 1) % 10;
+            glowIndex = (glowIndex + 1) % 10;
         }
         return;
     }
 
     if (currentPatternMode == PATTERN_FLICKER)
     {
-        if (now - lastPatternStepMs >= speed / 2)
+        if (currentTime - lastAnimationTime >= speed / 2)
         {
-            lastPatternStepMs = now;
-            setLeds(
-                random(0, 2),
-                random(0, 2),
-                random(0, 2),
-                random(0, 2),
-                random(0, 2));
+            lastAnimationTime = currentTime;
+            for (int i = 0; i < 5; i++)
+            {
+                digitalWrite(LED_PINS[i], random(0, 2) ? HIGH : LOW);
+            }
         }
         return;
     }
 
     if (currentPatternMode == PATTERN_TEMPERATURE)
     {
-        int tempInt = getTemperatureAsBinary(currentTemperature);
-        setLeds(
-            (tempInt >> 0) & 1,
-            (tempInt >> 1) & 1,
-            (tempInt >> 2) & 1,
-            (tempInt >> 3) & 1,
-            (tempInt >> 4) & 1);
+        int tempBits = getTemperatureAsBinary(currentTemperature);
+        for (int i = 0; i < 5; i++)
+        {
+            digitalWrite(LED_PINS[i], ((tempBits >> i) & 1) ? HIGH : LOW);
+        }
         return;
     }
 
     if (currentPatternMode == PATTERN_MANUAL)
     {
-        setLeds(ledStates[0], ledStates[1], ledStates[2], ledStates[3], ledStates[4]);
+        for (int i = 0; i < 5; i++)
+        {
+            digitalWrite(LED_PINS[i], ledStates[i] ? HIGH : LOW);
+        }
         return;
     }
 }
 
 void loop()
 {
-    int adcValue = analogRead(sensorPin);
+    int adcValue = analogRead(TEMP_SENSOR_PIN);
 
     float voltage = adcValue * referenceVoltage / ADC_MAX;
 
@@ -299,17 +269,17 @@ void loop()
     if (WiFi.status() == WL_CONNECTED)
     {
         HTTPClient http;
-        http.begin(SERVER_URL);
+        http.begin(SENSOR_DATA_ENDPOINT);
         http.addHeader("Content-Type", "application/json");
 
         String payload = "{";
         payload += "\"temperature\":" + String(temperatureC, 2);
         payload += "}";
 
-        int code = http.POST(payload);
-        Serial.print("POST code: ");
-        Serial.println(code);
-        if (code > 0)
+        int httpStatus = http.POST(payload);
+        Serial.print("POST status: ");
+        Serial.println(httpStatus);
+        if (httpStatus > 0)
         {
             String resp = http.getString();
             Serial.println(resp);
@@ -322,14 +292,14 @@ void loop()
         WiFi.reconnect();
     }
 
-    unsigned long now = millis();
-    if (now - lastPatternPollMs >= patternPollIntervalMs)
+    unsigned long currentTime = millis();
+    if (currentTime - lastStatusCheckTime >= statusCheckInterval)
     {
-        lastPatternPollMs = now;
+        lastStatusCheckTime = currentTime;
         pollPattern();
     }
 
-    updatePattern(now);
+    updatePattern(currentTime);
 
-    delay(500);
+    delay(3000);
 }
