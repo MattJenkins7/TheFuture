@@ -20,6 +20,8 @@ const int LED_5 = 12;
 
 const int LED_PINS[5] = {LED_1, LED_2, LED_3, LED_4, LED_5};
 
+const int TEMP_SENSOR_PIN = 5;
+
 enum PatternMode
 {
     PATTERN_OFF,
@@ -35,7 +37,7 @@ PatternMode currentPatternMode = PATTERN_OFF;
 String currentPattern = "OFF";
 bool ledStates[5] = {false, false, false, false, false};
 unsigned long lastStatusCheckTime = 0;
-const unsigned long statusCheckInterval = 300; // ms between pattern polling
+const unsigned long statusCheckInterval = 1000; // ms between pattern polling
 unsigned long lastSensorSendTime = 0;
 const unsigned long sensorSendInterval = 3000; // ms between sensor data sends
 unsigned long lastAnimationTime = 0;
@@ -43,8 +45,6 @@ int wavePosition = 0;             // current position in wave/chase pattern
 bool isBlinkOn = false;           // tracks blink on/off state
 int animationStep = 0;            // position in glow/alternate animation
 const unsigned long speed = 1000; // ms between animation steps
-
-const int TEMP_SENSOR_PIN = 5;
 
 const float referenceVoltage = 3.3;
 #define ADC_MAX 4095.0
